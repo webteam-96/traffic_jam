@@ -1,0 +1,14 @@
+# Flutter / Dart build artifacts (frontend/.gitignore also covers these)
+frontend/build/
+frontend/.dart_tool/
+frontend/.flutter-plugins-dependencies
+frontend/.idea/
+**/*.iml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Local temp
+scratchpad/
+*.log

@@ -1,0 +1,204 @@
+import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
+import 'app_shell.dart';
+
+// Screens
+import 'screens/auth/splash_screen.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/auth/otp_screen.dart';
+import 'screens/onboarding/welcome_screen.dart';
+import 'screens/onboarding/identity_screen.dart';
+import 'screens/onboarding/birth_time_screen.dart';
+import 'screens/onboarding/birth_place_screen.dart';
+import 'screens/onboarding/calculating_screen.dart';
+import 'screens/details/traffic_signal_screen.dart';
+import 'screens/details/time_windows_screen.dart';
+import 'screens/details/vibe_meter_screen.dart';
+import 'screens/details/color_of_day_screen.dart';
+import 'screens/details/astro_insights_screen.dart';
+import 'screens/details/kundli_screen.dart';
+import 'screens/details/dasha_timeline_screen.dart';
+import 'screens/details/planet_strengths_screen.dart';
+import 'screens/ask/chat_screen.dart';
+import 'screens/ask/my_questions_screen.dart';
+import 'screens/remedies/remedies_screen.dart';
+import 'screens/profile/edit_birth_data_screen.dart';
+import 'screens/profile/notification_prefs_screen.dart';
+import 'screens/profile/subscription_screen.dart';
+import 'screens/notifications_screen.dart';
+
+typedef ScreenBuilder = Widget Function();
+
+class NavDest {
+  const NavDest(this.label, this.icon, this.builder);
+  final String label;
+  final IconData icon;
+  final ScreenBuilder builder;
+}
+
+class NavGroup {
+  const NavGroup(this.title, this.items);
+  final String title;
+  final List<NavDest> items;
+}
+
+/// Every pushed screen, grouped — powers the hamburger nav hub so the whole
+/// app is reachable. In-context taps (home actions, profile rows) push these too.
+const List<NavGroup> kNavGroups = [
+  NavGroup('Onboarding & Auth', [
+    NavDest('Splash', Icons.blur_on, SplashScreen.new),
+    NavDest('Login', Icons.phone_iphone, LoginScreen.new),
+    NavDest('OTP Verification', Icons.pin, OtpScreen.new),
+    NavDest('Welcome', Icons.waving_hand_outlined, WelcomeScreen.new),
+    NavDest('Identity', Icons.person_outline, IdentityScreen.new),
+    NavDest('Birth Time', Icons.schedule, BirthTimeScreen.new),
+    NavDest('Birth Place', Icons.place_outlined, BirthPlaceScreen.new),
+    NavDest('Calculating', Icons.auto_awesome, CalculatingScreen.new),
+  ]),
+  NavGroup('Daily Insights', [
+    NavDest("Today's Signal", Icons.traffic_outlined, TrafficSignalScreen.new),
+    NavDest('Auspicious Windows', Icons.timelapse, TimeWindowsScreen.new),
+    NavDest('Vibe Meter', Icons.speed, VibeMeterScreen.new),
+    NavDest('Color of the Day', Icons.palette_outlined, ColorOfDayScreen.new),
+    NavDest('Astro Insights', Icons.insights, AstroInsightsScreen.new),
+  ]),
+  NavGroup('My Chart', [
+    NavDest('Kundli', Icons.grid_4x4, KundliScreen.new),
+    NavDest('Dasha Timeline', Icons.timeline, DashaTimelineScreen.new),
+    NavDest('Planet Strengths', Icons.bar_chart, PlanetStrengthsScreen.new),
+  ]),
+  NavGroup('Ask Jay', [
+    NavDest('Chat with Jay', Icons.chat_bubble_outline, AskChatScreen.new),
+    NavDest('My Questions', Icons.history, MyQuestionsScreen.new),
+  ]),
+  NavGroup('Remedies', [
+    NavDest('Remedies', Icons.spa_outlined, RemediesScreen.new),
+  ]),
+  NavGroup('Account', [
+    NavDest('Notifications', Icons.notifications_none, NotificationsScreen.new),
+    NavDest('Edit Birth Data', Icons.edit_outlined, EditBirthDataScreen.new),
+    NavDest('Notification Prefs', Icons.tune, NotificationPrefsScreen.new),
+    NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new),
+  ]),
+];
+
+void pushScreen(BuildContext context, ScreenBuilder builder) {
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => builder()));
+}
+
+/// Lightweight confirmation for terminal actions (save, upgrade, share…).
+void toast(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(message, style: AppText.sans(size: 14, color: AppColors.textPrimary)),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.surfaceRaised2,
+      duration: const Duration(seconds: 2),
+    ));
+}
+
+/// Enter the main app, clearing the onboarding/auth stack (end of onboarding).
+void goToShell(BuildContext context) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const AppShell()),
+    (route) => false,
+  );
+}
+
+/// Return to the login screen, clearing the stack (log out).
+void goToLogin(BuildContext context) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const LoginScreen()),
+    (route) => false,
+  );
+}
+
+// ── Named flow hops (so each screen imports only nav.dart) ───────────────────
+// Onboarding / auth chain
+void goToOtp(BuildContext c) => pushScreen(c, OtpScreen.new);
+void goToWelcome(BuildContext c) => pushScreen(c, WelcomeScreen.new);
+void goToIdentity(BuildContext c) => pushScreen(c, IdentityScreen.new);
+void goToBirthTime(BuildContext c) => pushScreen(c, BirthTimeScreen.new);
+void goToBirthPlace(BuildContext c) => pushScreen(c, BirthPlaceScreen.new);
+void goToCalculating(BuildContext c) => pushScreen(c, CalculatingScreen.new);
+// Profile / account deep-links
+void goToEditBirthData(BuildContext c) => pushScreen(c, EditBirthDataScreen.new);
+void goToNotificationPrefs(BuildContext c) => pushScreen(c, NotificationPrefsScreen.new);
+void goToSubscription(BuildContext c) => pushScreen(c, SubscriptionScreen.new);
+void goToNotifications(BuildContext c) => pushScreen(c, NotificationsScreen.new);
+// Ask Jay
+void goToChat(BuildContext c) => pushScreen(c, AskChatScreen.new);
+void goToMyQuestions(BuildContext c) => pushScreen(c, MyQuestionsScreen.new);
+// My Chart sub-views
+void goToKundli(BuildContext c) => pushScreen(c, KundliScreen.new);
+void goToDashaTimeline(BuildContext c) => pushScreen(c, DashaTimelineScreen.new);
+void goToPlanetStrengths(BuildContext c) => pushScreen(c, PlanetStrengthsScreen.new);
+void goToAstroInsights(BuildContext c) => pushScreen(c, AstroInsightsScreen.new);
+
+/// Slide-out navigation hub (opened from the top-bar hamburger).
+class AppNavDrawer extends StatelessWidget {
+  const AppNavDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: AppColors.bgBottom,
+      width: 300,
+      child: Container(
+        decoration: const BoxDecoration(gradient: AppColors.scaffoldGradient),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, color: AppColors.gold, size: 20),
+                    const SizedBox(width: 10),
+                    Text('TRAFFIC JAM',
+                        style: AppText.logoFont(size: 18, letterSpacing: 1.6)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Text('All screens',
+                    style: AppText.sans(size: 12, color: AppColors.textMuted)),
+              ),
+              const Divider(color: AppColors.borderFaint, height: 1),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    for (final g in kNavGroups) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+                        child: Text(g.title.toUpperCase(),
+                            style: AppText.sectionLabel),
+                      ),
+                      for (final d in g.items)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(d.icon, color: AppColors.textTan, size: 20),
+                          title: Text(d.label,
+                              style: AppText.sans(
+                                  size: 14, color: AppColors.textPrimary)),
+                          onTap: () {
+                            Navigator.of(context).pop(); // close drawer
+                            pushScreen(context, d.builder);
+                          },
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
