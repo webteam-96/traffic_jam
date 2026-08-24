@@ -19,13 +19,22 @@ import 'screens/details/astro_insights_screen.dart';
 import 'screens/details/kundli_screen.dart';
 import 'screens/details/dasha_timeline_screen.dart';
 import 'screens/details/planet_strengths_screen.dart';
+import 'screens/details/upcoming_transits_screen.dart';
 import 'screens/ask/chat_screen.dart';
 import 'screens/ask/my_questions_screen.dart';
 import 'screens/remedies/remedies_screen.dart';
 import 'screens/profile/edit_birth_data_screen.dart';
 import 'screens/profile/notification_prefs_screen.dart';
 import 'screens/profile/subscription_screen.dart';
+import 'screens/profile/book_appointment_screen.dart';
+import 'screens/profile/about_jay_kotecha_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/cosmic_foundations/zodiac_signs_screen.dart';
+import 'screens/cosmic_foundations/planets_screen.dart';
+import 'screens/cosmic_foundations/houses_screen.dart';
+import 'screens/cosmic_foundations/elements_screen.dart';
+import 'screens/cosmic_foundations/nakshatras_screen.dart';
+import 'screens/cosmic_foundations/yog_screen.dart';
 
 typedef ScreenBuilder = Widget Function();
 
@@ -61,6 +70,7 @@ const List<NavGroup> kNavGroups = [
     NavDest('Vibe Meter', Icons.speed, VibeMeterScreen.new),
     NavDest('Color of the Day', Icons.palette_outlined, ColorOfDayScreen.new),
     NavDest('Astro Insights', Icons.insights, AstroInsightsScreen.new),
+    NavDest('Upcoming Transits', Icons.calendar_month, UpcomingTransitsScreen.new),
   ]),
   NavGroup('My Chart', [
     NavDest('Kundli', Icons.grid_4x4, KundliScreen.new),
@@ -79,6 +89,16 @@ const List<NavGroup> kNavGroups = [
     NavDest('Edit Birth Data', Icons.edit_outlined, EditBirthDataScreen.new),
     NavDest('Notification Prefs', Icons.tune, NotificationPrefsScreen.new),
     NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new),
+    NavDest('Book Appointment', Icons.calendar_month, BookAppointmentScreen.new),
+    NavDest('About Jay Kotecha', Icons.person_outline, AboutJayKotechaScreen.new),
+  ]),
+  NavGroup('Cosmic Foundations', [
+    NavDest('12 Zodiac Signs', Icons.auto_awesome, ZodiacSignsScreen.new),
+    NavDest('9 Planets', Icons.brightness_7, PlanetsScreen.new),
+    NavDest('12 Houses', Icons.grid_3x3, HousesScreen.new),
+    NavDest('5 Elements', Icons.diamond, ElementsScreen.new),
+    NavDest('27 Nakshatras', Icons.nightlight_round, NakshatrasScreen.new),
+    NavDest('Yog in Astrology', Icons.auto_awesome_motion, YogScreen.new),
   ]),
 ];
 
@@ -135,6 +155,17 @@ void goToKundli(BuildContext c) => pushScreen(c, KundliScreen.new);
 void goToDashaTimeline(BuildContext c) => pushScreen(c, DashaTimelineScreen.new);
 void goToPlanetStrengths(BuildContext c) => pushScreen(c, PlanetStrengthsScreen.new);
 void goToAstroInsights(BuildContext c) => pushScreen(c, AstroInsightsScreen.new);
+void goToUpcomingTransits(BuildContext c) => pushScreen(c, UpcomingTransitsScreen.new);
+// Profile / account deep-links
+void goToBookAppointment(BuildContext c) => pushScreen(c, BookAppointmentScreen.new);
+void goToAboutJayKotecha(BuildContext c) => pushScreen(c, AboutJayKotechaScreen.new);
+// Cosmic Foundations
+void goToZodiacSigns(BuildContext c) => pushScreen(c, ZodiacSignsScreen.new);
+void goToPlanets(BuildContext c) => pushScreen(c, PlanetsScreen.new);
+void goToHouses(BuildContext c) => pushScreen(c, HousesScreen.new);
+void goToElements(BuildContext c) => pushScreen(c, ElementsScreen.new);
+void goToNakshatras(BuildContext c) => pushScreen(c, NakshatrasScreen.new);
+void goToYog(BuildContext c) => pushScreen(c, YogScreen.new);
 
 /// Slide-out navigation hub (opened from the top-bar hamburger).
 class AppNavDrawer extends StatelessWidget {

@@ -7,7 +7,13 @@ import 'notifications_screen.dart';
 import 'details/kundli_screen.dart';
 import 'details/traffic_signal_screen.dart';
 import 'details/vibe_meter_screen.dart';
-import 'ask/chat_screen.dart';
+import 'profile/book_appointment_screen.dart';
+import 'cosmic_foundations/zodiac_signs_screen.dart';
+import 'cosmic_foundations/planets_screen.dart';
+import 'cosmic_foundations/houses_screen.dart';
+import 'cosmic_foundations/elements_screen.dart';
+import 'cosmic_foundations/nakshatras_screen.dart';
+import 'cosmic_foundations/yog_screen.dart';
 
 /// Home dashboard — Figma node 1:711.
 /// Action hub (2x2) · Today's Panchang · Celestial Vibe Meter ·
@@ -267,7 +273,7 @@ class _CosmicReadingCard extends StatelessWidget {
                     label: 'BOOK APPOINTMENT',
                     expand: false,
                     height: 56,
-                    onPressed: () => pushScreen(context, AskChatScreen.new),
+                    onPressed: () => pushScreen(context, BookAppointmentScreen.new),
                   ),
                 ],
               ),
@@ -281,20 +287,21 @@ class _CosmicReadingCard extends StatelessWidget {
 
 // ── Cosmic Foundations ────────────────────────────────────────────────────────
 class _FoundationItem {
-  const _FoundationItem(this.icon, this.title, this.subtitle, this.iconSize);
+  const _FoundationItem(this.icon, this.title, this.subtitle, this.iconSize, this.onTap);
   final String icon;
   final String title;
   final String subtitle;
   final double iconSize;
+  final void Function(BuildContext) onTap;
 }
 
 const _foundations = [
-  _FoundationItem(Assets.iconZodiac, '12 Zodiac Signs', 'Discover your core identity.', 25),
-  _FoundationItem(Assets.iconPlanets, '9 Planets', 'The celestial influencers.', 28),
-  _FoundationItem(Assets.iconHouses, '12 Houses', 'Areas of life experience.', 22),
-  _FoundationItem(Assets.iconElements, '5 Elements', 'The energetic makeup.', 24),
-  _FoundationItem(Assets.iconNakshatras, '27 Nakshatras', 'The lunar mansions.', 27),
-  _FoundationItem(Assets.iconYog, 'Yog in Astrology', 'Powerful cosmic pairings.', 22),
+  _FoundationItem(Assets.iconZodiac, '12 Zodiac Signs', 'Discover your core identity.', 25, goToZodiacSigns),
+  _FoundationItem(Assets.iconPlanets, '9 Planets', 'The celestial influencers.', 28, goToPlanets),
+  _FoundationItem(Assets.iconHouses, '12 Houses', 'Areas of life experience.', 22, goToHouses),
+  _FoundationItem(Assets.iconElements, '5 Elements', 'The energetic makeup.', 24, goToElements),
+  _FoundationItem(Assets.iconNakshatras, '27 Nakshatras', 'The lunar mansions.', 27, goToNakshatras),
+  _FoundationItem(Assets.iconYog, 'Yog in Astrology', 'Powerful cosmic pairings.', 22, goToYog),
 ];
 
 class _CosmicFoundations extends StatelessWidget {
@@ -306,6 +313,7 @@ class _CosmicFoundations extends StatelessWidget {
           radius: AppRadius.lg,
           borderColor: AppColors.borderSoft,
           padding: const EdgeInsets.all(AppSpacing.cardPad),
+          onTap: () => f.onTap(context),
           child: Column(
             children: [
               IconChip(
