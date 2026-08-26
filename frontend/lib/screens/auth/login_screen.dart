@@ -81,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
+                        onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
                           counterText: '',
                           hintText: '98765 43210',
@@ -122,7 +123,9 @@ class _LoginScreenState extends State<LoginScreen> {
           GoldButton(
             label: 'CONTINUE',
             icon: Icons.arrow_forward,
-            onPressed: () => goToOtp(context),
+            onPressed: _phone.text.length == 10
+                ? () => goToOtp(context, phoneNumber: _phone.text)
+                : null,
           ),
           const SizedBox(height: AppSpacing.section),
           Row(

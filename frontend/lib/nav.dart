@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'app_shell.dart';
+import 'services/auth_service.dart';
 
 // Screens
 import 'screens/auth/splash_screen.dart';
@@ -10,13 +12,14 @@ import 'screens/onboarding/welcome_screen.dart';
 import 'screens/onboarding/identity_screen.dart';
 import 'screens/onboarding/birth_time_screen.dart';
 import 'screens/onboarding/birth_place_screen.dart';
+import 'screens/onboarding/consent_screen.dart';
 import 'screens/onboarding/calculating_screen.dart';
 import 'screens/details/traffic_signal_screen.dart';
 import 'screens/details/time_windows_screen.dart';
 import 'screens/details/vibe_meter_screen.dart';
 import 'screens/details/color_of_day_screen.dart';
 import 'screens/details/astro_insights_screen.dart';
-import 'screens/details/kundli_screen.dart';
+import 'screens/kundli/kundli_landing_screen.dart';
 import 'screens/details/dasha_timeline_screen.dart';
 import 'screens/details/planet_strengths_screen.dart';
 import 'screens/details/upcoming_transits_screen.dart';
@@ -28,6 +31,7 @@ import 'screens/profile/notification_prefs_screen.dart';
 import 'screens/profile/subscription_screen.dart';
 import 'screens/profile/book_appointment_screen.dart';
 import 'screens/profile/about_jay_kotecha_screen.dart';
+import 'screens/profile/privacy_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/cosmic_foundations/zodiac_signs_screen.dart';
 import 'screens/cosmic_foundations/planets_screen.dart';
@@ -62,6 +66,7 @@ const List<NavGroup> kNavGroups = [
     NavDest('Identity', Icons.person_outline, IdentityScreen.new),
     NavDest('Birth Time', Icons.schedule, BirthTimeScreen.new),
     NavDest('Birth Place', Icons.place_outlined, BirthPlaceScreen.new),
+    NavDest('Consent', Icons.verified_user_outlined, ConsentScreen.new),
     NavDest('Calculating', Icons.auto_awesome, CalculatingScreen.new),
   ]),
   NavGroup('Daily Insights', [
@@ -73,7 +78,7 @@ const List<NavGroup> kNavGroups = [
     NavDest('Upcoming Transits', Icons.calendar_month, UpcomingTransitsScreen.new),
   ]),
   NavGroup('My Chart', [
-    NavDest('Kundli', Icons.grid_4x4, KundliScreen.new),
+    NavDest('Kundli', Icons.grid_4x4, KundliLandingScreen.new),
     NavDest('Dasha Timeline', Icons.timeline, DashaTimelineScreen.new),
     NavDest('Planet Strengths', Icons.bar_chart, PlanetStrengthsScreen.new),
   ]),
@@ -91,6 +96,7 @@ const List<NavGroup> kNavGroups = [
     NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new),
     NavDest('Book Appointment', Icons.calendar_month, BookAppointmentScreen.new),
     NavDest('About Jay Kotecha', Icons.person_outline, AboutJayKotechaScreen.new),
+    NavDest('Privacy', Icons.shield_outlined, PrivacyScreen.new),
   ]),
   NavGroup('Cosmic Foundations', [
     NavDest('12 Zodiac Signs', Icons.auto_awesome, ZodiacSignsScreen.new),
@@ -128,6 +134,7 @@ void goToShell(BuildContext context) {
 
 /// Return to the login screen, clearing the stack (log out).
 void goToLogin(BuildContext context) {
+  unawaited(AuthService.logout());
   Navigator.of(context).pushAndRemoveUntil(
     MaterialPageRoute(builder: (_) => const LoginScreen()),
     (route) => false,
@@ -136,11 +143,13 @@ void goToLogin(BuildContext context) {
 
 // ── Named flow hops (so each screen imports only nav.dart) ───────────────────
 // Onboarding / auth chain
-void goToOtp(BuildContext c) => pushScreen(c, OtpScreen.new);
+void goToOtp(BuildContext c, {String phoneNumber = ''}) =>
+    Navigator.of(c).push(MaterialPageRoute(builder: (_) => OtpScreen(phoneNumber: phoneNumber)));
 void goToWelcome(BuildContext c) => pushScreen(c, WelcomeScreen.new);
 void goToIdentity(BuildContext c) => pushScreen(c, IdentityScreen.new);
 void goToBirthTime(BuildContext c) => pushScreen(c, BirthTimeScreen.new);
 void goToBirthPlace(BuildContext c) => pushScreen(c, BirthPlaceScreen.new);
+void goToConsent(BuildContext c) => pushScreen(c, ConsentScreen.new);
 void goToCalculating(BuildContext c) => pushScreen(c, CalculatingScreen.new);
 // Profile / account deep-links
 void goToEditBirthData(BuildContext c) => pushScreen(c, EditBirthDataScreen.new);
@@ -151,7 +160,7 @@ void goToNotifications(BuildContext c) => pushScreen(c, NotificationsScreen.new)
 void goToChat(BuildContext c) => pushScreen(c, AskChatScreen.new);
 void goToMyQuestions(BuildContext c) => pushScreen(c, MyQuestionsScreen.new);
 // My Chart sub-views
-void goToKundli(BuildContext c) => pushScreen(c, KundliScreen.new);
+void goToKundli(BuildContext c) => pushScreen(c, KundliLandingScreen.new);
 void goToDashaTimeline(BuildContext c) => pushScreen(c, DashaTimelineScreen.new);
 void goToPlanetStrengths(BuildContext c) => pushScreen(c, PlanetStrengthsScreen.new);
 void goToAstroInsights(BuildContext c) => pushScreen(c, AstroInsightsScreen.new);

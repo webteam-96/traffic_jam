@@ -1,90 +1,57 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:traffic_jam/theme/app_theme.dart';
-import 'package:traffic_jam/widgets/widgets.dart';
-import 'package:traffic_jam/services/user_api.dart';
-import 'package:traffic_jam/services/api_client.dart';
-import 'package:traffic_jam/nav.dart';
+import '../../widgets/widgets.dart';
+import '../../theme/app_theme.dart';
+import '../../models/kundli_profile.dart';
+import '../details/kundli_screen.dart';
 
-/// Edit birth data — real form wired to GET/PUT /me/birth-data. Pushed
-/// screen, so it roots in DetailScaffold. Pops `true` on a successful save
-/// so Profile knows to reload.
-///
-/// Place of birth uses a small curated city list (with embedded lat/lng/
-/// timezone) rather than the Google Places proxy — that needs a real API
-/// key that isn't configured yet (see backend/README.md).
-class EditBirthDataScreen extends StatefulWidget {
-  const EditBirthDataScreen({super.key});
+/// Get Kundli — Business Flow §5.3. Capture a family member/friend's birth
+/// details, "generate" the chart (mocked delay), save it, then open it in
+/// the same Kundli detail screen used for "My Kundli".
+class GetKundliScreen extends StatefulWidget {
+  const GetKundliScreen({super.key});
 
   @override
-  State<EditBirthDataScreen> createState() => _EditBirthDataScreenState();
+  State<GetKundliScreen> createState() => _GetKundliScreenState();
 }
 
-class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
+class _GetKundliScreenState extends State<GetKundliScreen> {
   final _name = TextEditingController();
+  final _place = TextEditingController();
+
   DateTime? _dob;
   int _hour = 6;
   int _minute = 0;
   bool _isAm = true;
-  bool _unknownTime = false;
+  bool _tobUnknown = false;
   int? _selectedCity;
-  bool _loading = true;
-  bool _saving = false;
+  bool _generating = false;
 
-  static const _cities = <(String, double, double, String)>[
-    ('Mumbai, Maharashtra, India', 19.0760, 72.8777, 'Asia/Kolkata'),
-    ('Delhi, India', 28.6139, 77.2090, 'Asia/Kolkata'),
-    ('Pune, Maharashtra, India', 18.5204, 73.8567, 'Asia/Kolkata'),
-    ('Bengaluru, Karnataka, India', 12.9716, 77.5946, 'Asia/Kolkata'),
-    ('Ahmedabad, Gujarat, India', 23.0225, 72.5714, 'Asia/Kolkata'),
+  static const _cities = [
+    'Mumbai, Maharashtra, India',
+    'Delhi, India',
+    'Pune, Maharashtra, India',
+    'Bengaluru, Karnataka, India',
+    'Ahmedabad, Gujarat, India',
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
 
   @override
   void dispose() {
     _name.dispose();
+    _place.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    try {
-      final data = await UserApi.getBirthData();
-      if (data != null && mounted) {
-        _name.text = data['name'] as String? ?? '';
-        final dobParts = (data['dob'] as String).split('-');
-        _dob = DateTime(
-            int.parse(dobParts[0]), int.parse(dobParts[1]), int.parse(dobParts[2]));
-        _unknownTime = data['unknownTime'] as bool? ?? false;
-        final tob = data['tob'] as String?;
-        if (tob != null) {
-          final parts = tob.split(':');
-          final h24 = int.parse(parts[0]);
-          _minute = int.parse(parts[1]);
-          _isAm = h24 < 12;
-          _hour = h24 % 12 == 0 ? 12 : h24 % 12;
-        }
-        final place = data['place'] as String?;
-        final idx = _cities.indexWhere((c) => c.$1 == place);
-        if (idx != -1) _selectedCity = idx;
-      }
-    } catch (_) {
-      // No saved data yet (or a transient error) — the form just starts blank.
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  bool get _canGenerate =>
+      _name.text.trim().isNotEmpty && _dob != null && _selectedCity != null;
 
-  bool get _canSave => _dob != null && _selectedCity != null && !_saving;
+  String _pad(int v) => v.toString().padLeft(2, '0');
 
   Future<void> _pickDob() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dob ?? DateTime(now.year - 25),
+      initialDate: DateTime(now.year - 25),
       firstDate: DateTime(1900),
       lastDate: now,
       builder: (context, child) => Theme(
@@ -102,8 +69,8 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
     if (picked != null) setState(() => _dob = picked);
   }
 
-  void _bumpTime(int hourDelta, int minuteDelta) {
-    if (_unknownTime) return;
+  void _bump(int hourDelta, int minuteDelta) {
+    if (_tobUnknown) return;
     setState(() {
       if (hourDelta != 0) {
         _hour += hourDelta;
@@ -114,39 +81,29 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
     });
   }
 
-  Future<void> _save() async {
-    if (!_canSave) return;
-    setState(() => _saving = true);
-    try {
-      final city = _cities[_selectedCity!];
-      var hour24 = _hour % 12;
-      if (!_isAm) hour24 += 12;
-      await UserApi.saveBirthData(
-        name: _name.text.trim().isEmpty ? null : _name.text.trim(),
-        dob: _dob!,
-        hour24: _unknownTime ? null : hour24,
-        minute: _unknownTime ? null : _minute,
-        unknownTime: _unknownTime,
-        place: city.$1,
-        lat: city.$2,
-        lng: city.$3,
-        timezone: city.$4,
-      );
-      if (!mounted) return;
-      toast(context, 'Birth data saved');
-      Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      toast(context, e.message);
-    } catch (_) {
-      if (!mounted) return;
-      toast(context, "Couldn't reach the server — check your connection.");
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+  Future<void> _generate() async {
+    if (!_canGenerate) return;
+    setState(() => _generating = true);
+    await Future.delayed(const Duration(milliseconds: 1400));
+    if (!mounted) return;
+
+    final profile = KundliProfile(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: _name.text.trim(),
+      isOwn: false,
+      dob: '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
+      tob: _tobUnknown ? '' : '${_pad(_hour)}:${_pad(_minute)} ${_isAm ? "AM" : "PM"}',
+      tobUnknown: _tobUnknown,
+      place: _cities[_selectedCity!],
+      generatedOn: 'just now',
+    );
+    KundliStore.add(profile);
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => KundliScreen(profile: profile)),
+    );
   }
 
-  String _pad(int v) => v.toString().padLeft(2, '0');
   String _monthName(int m) => const [
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -154,27 +111,18 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const DetailScaffold(
-        title: 'Edit Birth Data',
-        scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
-      );
-    }
+    if (_generating) return _LoadingView(name: _name.text.trim());
 
     return DetailScaffold(
-      title: 'Edit Birth Data',
+      title: 'Get Kundli',
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: AppSpacing.md),
-          Text('Refine your chart', style: AppText.displayLg),
+          Text('Generate a chart', style: AppText.displayLg),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Accurate birth details sharpen every reading.',
+            'Enter their birth details to cast a personal Kundli — saved to '
+            'your list once generated.',
             style: AppText.body,
           ),
           const SizedBox(height: AppSpacing.section),
@@ -187,7 +135,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
             cursorColor: AppColors.gold,
             style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
             decoration: InputDecoration(
-              hintText: 'e.g. Ananya Sharma',
+              hintText: 'e.g. Rohan Mehta',
               hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
               filled: true,
               fillColor: AppColors.bgDeep,
@@ -201,6 +149,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
                 borderSide: const BorderSide(color: AppColors.gold),
               ),
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: AppSpacing.xl),
 
@@ -230,24 +179,24 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
           const SectionLabel('TIME OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
           Opacity(
-            opacity: _unknownTime ? 0.4 : 1,
+            opacity: _tobUnknown ? 0.4 : 1,
             child: GlassCard(
               goldTopBorder: true,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _TimeUnit(value: _pad(_hour), onUp: () => _bumpTime(1, 0), onDown: () => _bumpTime(-1, 0)),
+                  _TimeUnit(value: _pad(_hour), onUp: () => _bump(1, 0), onDown: () => _bump(-1, 0)),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                     child: Text(':',
                         style: AppText.serif(size: 32, weight: FontWeight.w700, color: AppColors.amber)),
                   ),
-                  _TimeUnit(value: _pad(_minute), onUp: () => _bumpTime(0, 1), onDown: () => _bumpTime(0, -1)),
+                  _TimeUnit(value: _pad(_minute), onUp: () => _bump(0, 1), onDown: () => _bump(0, -1)),
                   const SizedBox(width: AppSpacing.md),
                   _TimeUnit(
                     value: _isAm ? 'AM' : 'PM',
-                    onUp: _unknownTime ? null : () => setState(() => _isAm = !_isAm),
-                    onDown: _unknownTime ? null : () => setState(() => _isAm = !_isAm),
+                    onUp: _tobUnknown ? null : () => setState(() => _isAm = !_isAm),
+                    onDown: _tobUnknown ? null : () => setState(() => _isAm = !_isAm),
                   ),
                 ],
               ),
@@ -259,11 +208,11 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text("I don't know my birth time", style: AppText.cardTitle),
+                  child: Text("I don't know their birth time", style: AppText.cardTitle),
                 ),
                 Switch(
-                  value: _unknownTime,
-                  onChanged: (v) => setState(() => _unknownTime = v),
+                  value: _tobUnknown,
+                  onChanged: (v) => setState(() => _tobUnknown = v),
                   activeThumbColor: AppColors.textOnGold,
                   activeTrackColor: AppColors.gold,
                   inactiveThumbColor: AppColors.textMuted,
@@ -276,6 +225,28 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
           const SectionLabel('PLACE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _place,
+            cursorColor: AppColors.gold,
+            style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Search city',
+              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
+              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.gold),
+              filled: true,
+              fillColor: AppColors.bgDeep,
+              contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 16),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                borderSide: const BorderSide(color: AppColors.gold),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
           for (int i = 0; i < _cities.length; i++) ...[
             GlassCard(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
@@ -287,7 +258,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
                       color: i == _selectedCity ? AppColors.gold : AppColors.textMuted),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: Text(_cities[i].$1,
+                    child: Text(_cities[i],
                         style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
                   ),
                   if (i == _selectedCity)
@@ -300,11 +271,10 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           GoldButton(
-            label: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            icon: Icons.check,
-            onPressed: _canSave ? _save : null,
+            label: 'GENERATE',
+            icon: Icons.auto_awesome,
+            onPressed: _canGenerate ? _generate : null,
           ),
-          const SizedBox(height: AppSpacing.md),
         ],
       ),
     );
@@ -339,4 +309,40 @@ class _TimeUnit extends StatelessWidget {
           child: Icon(icon, size: 20, color: onTap == null ? AppColors.textMuted : AppColors.gold),
         ),
       );
+}
+
+class _LoadingView extends StatelessWidget {
+  const _LoadingView({required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return DetailScaffold(
+      showBack: false,
+      scrollable: false,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SectionLabel('CASTING THE CHART'),
+            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation(AppColors.gold),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              name.isEmpty ? 'Reading the stars…' : "Reading $name's stars…",
+              textAlign: TextAlign.center,
+              style: AppText.serif(size: 24, weight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

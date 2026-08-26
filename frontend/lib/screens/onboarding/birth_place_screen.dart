@@ -131,7 +131,7 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
           GoldButton(
             label: 'CONTINUE',
             icon: Icons.arrow_forward,
-            onPressed: () => goToCalculating(context),
+            onPressed: () => goToConsent(context),
           ),
         ],
       ),

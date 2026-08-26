@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
-import 'package:traffic_jam/nav.dart';
 
 /// Book an Appointment — §9 of Business Flow.
 /// Lead-capture form prefilled with user data; routes to admin panel with chart context.
@@ -90,7 +89,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   const SectionLabel('CONSULTATION AREA'),
                   const SizedBox(height: AppSpacing.md),
                   DropdownButtonFormField<int>(
-                    value: _areaIndex,
+                    initialValue: _areaIndex,
                     decoration: _inputDecoration('Select Area', Icons.category_outlined),
                     dropdownColor: AppColors.surfaceRaised,
                     style: AppText.sans(size: 16, color: AppColors.textPrimary),

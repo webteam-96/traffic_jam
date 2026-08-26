@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import '../widgets/widgets.dart';
 import '../theme/app_theme.dart';
 import '../nav.dart';
+import '../models/kundli_profile.dart';
+import '../services/user_api.dart';
+import 'kundli/kundli_landing_screen.dart';
+import 'kundli/get_kundli_screen.dart';
+import 'details/kundli_screen.dart';
+import 'profile/privacy_screen.dart';
+import 'profile/edit_birth_data_screen.dart';
 
 // Figma node 1:397 — Profile tab ("Cosmic Identity"). Mock data inline.
 class ProfileScreen extends StatefulWidget {
@@ -13,6 +20,28 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _midnight = true; // Midnight Interface toggle (ON in design)
+
+  Map<String, dynamic>? _birthData;
+  bool _loadingBirthData = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBirthData();
+  }
+
+  Future<void> _loadBirthData() async {
+    setState(() => _loadingBirthData = true);
+    try {
+      final data = await UserApi.getBirthData();
+      if (mounted) setState(() => _birthData = data);
+    } catch (_) {
+      // Leave _birthData as-is (null shows the empty state) — a transient
+      // fetch failure shouldn't block the rest of the Profile tab.
+    } finally {
+      if (mounted) setState(() => _loadingBirthData = false);
+    }
+  }
 
   // Figma asset hashes (already downloaded to assets/figma/).
   static const _badge = 'e80b18a4357c34fb7ef9d784ffdb9fd09bc69f0b.svg';
@@ -47,6 +76,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'maintain alignment with the universal traffic flow.',
             style: AppText.sans(
                 size: 16, color: AppColors.textTan, height: 24 / 16),
+          ),
+          const SizedBox(height: AppSpacing.section),
+
+          // ── Astro Identity Card ─────────────────────────────────────
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionLabel('ASTRO IDENTITY', color: AppColors.gold),
+                const SizedBox(height: AppSpacing.lg),
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.md,
+                  children: const [
+                    _AstroChip('LAGNA', 'Leo'),
+                    _AstroChip('MOON SIGN', 'Taurus'),
+                    _AstroChip('SUN SIGN', 'Aquarius'),
+                    _AstroChip('NAKSHATRA', 'Krittika · Pada 3'),
+                    _AstroChip('CURRENT DASHA', 'Venus'),
+                  ],
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.section),
 
@@ -110,7 +162,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text('Birth Artifacts', style: AppText.headingSerif),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => goToEditBirthData(context),
+                      onTap: () async {
+                        final saved = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(builder: (_) => const EditBirthDataScreen()),
+                        );
+                        if (saved == true) _loadBirthData();
+                      },
                       child: Row(
                         children: [
                           const SvgIcon(_pencil,
@@ -128,25 +185,126 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xxl),
-                _field('SOLAR DATE', 'October 24, 1988'),
-                const SizedBox(height: AppSpacing.lg),
-                _field('CELESTIAL TIME', '04:42 AM'),
-                const SizedBox(height: AppSpacing.lg),
-                _field('GEOGRAPHIC ORIGIN', 'Mumbai, Maharashtra, India'),
-                const SizedBox(height: AppSpacing.xxl),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                  child: Container(
-                    height: 160,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      border: Border.all(color: AppColors.surfaceRaised2),
+                if (_loadingBirthData)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+                      ),
                     ),
-                    child: Opacity(
-                      opacity: 0.85,
-                      child: Image.asset(figmaAsset(_map), fit: BoxFit.cover),
+                  )
+                else if (_birthData == null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: Text(
+                      'No birth data saved yet — tap Edit Data to add your details.',
+                      style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.4),
                     ),
+                  )
+                else ...[
+                  _field('SOLAR DATE', _formatDob(_birthData!['dob'] as String)),
+                  const SizedBox(height: AppSpacing.lg),
+                  _field('CELESTIAL TIME',
+                      _birthData!['unknownTime'] == true
+                          ? 'Unknown'
+                          : _formatTob(_birthData!['tob'] as String?)),
+                  const SizedBox(height: AppSpacing.lg),
+                  _field('GEOGRAPHIC ORIGIN', _birthData!['place'] as String? ?? '—'),
+                  const SizedBox(height: AppSpacing.xxl),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(color: AppColors.surfaceRaised2),
+                      ),
+                      child: Opacity(
+                        opacity: 0.85,
+                        child: Image.asset(figmaAsset(_map), fit: BoxFit.cover),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.section),
+
+          // ── Saved Kundlis ────────────────────────────────────────────
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('Saved Kundlis', style: AppText.headingSerif),
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const GetKundliScreen()),
+                      ),
+                      child: Text('+ NEW',
+                          style: AppText.sans(
+                              size: 13,
+                              weight: FontWeight.w600,
+                              color: AppColors.gold,
+                              letterSpacing: 0.5)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                ValueListenableBuilder<List<KundliProfile>>(
+                  valueListenable: KundliStore.saved,
+                  builder: (context, saved, _) {
+                    if (saved.isEmpty) {
+                      return Text(
+                        'Charts generated for family or friends will appear here.',
+                        style: AppText.bodySmall,
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (int i = 0; i < saved.length; i++) ...[
+                          if (i > 0) _divider(),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => KundliScreen(profile: saved[i])),
+                            ),
+                            child: Row(
+                              children: [
+                                IconChip(
+                                    child: const Icon(Icons.person_outline,
+                                        size: 16, color: AppColors.gold)),
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: Text(saved[i].name, style: AppText.cardTitle),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    size: 18, color: AppColors.textMuted),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                GoldButton(
+                  label: 'VIEW ALL KUNDLIS',
+                  outlined: true,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const KundliLandingScreen()),
                   ),
                 ),
               ],
@@ -190,12 +348,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 7.4, height: 12, color: AppColors.textMuted),
                 ),
                 _divider(),
-                _prefRow(
-                  icon: _shield,
-                  title: 'Data Crypts',
-                  subtitle: 'Privacy and security settings',
-                  trailing: const SvgIcon(_chevron,
-                      width: 7.4, height: 12, color: AppColors.textMuted),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                  ),
+                  child: _prefRow(
+                    icon: _shield,
+                    title: 'Data Crypts',
+                    subtitle: 'Privacy and security settings',
+                    trailing: const SvgIcon(_chevron,
+                        width: 7.4, height: 12, color: AppColors.textMuted),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.section),
                 _logoutButton(),
@@ -205,6 +369,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  String _formatDob(String isoDate) {
+    final parts = isoDate.split('-');
+    final month = _months[int.parse(parts[1]) - 1];
+    return '$month ${int.parse(parts[2])}, ${parts[0]}';
+  }
+
+  String _formatTob(String? isoTime) {
+    if (isoTime == null) return 'Unknown';
+    final parts = isoTime.split(':');
+    final h24 = int.parse(parts[0]);
+    final minute = parts[1];
+    final isAm = h24 < 12;
+    final h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+    return '${h12.toString().padLeft(2, '0')}:$minute ${isAm ? 'AM' : 'PM'}';
   }
 
   // Card matching Figma #2b346b surface, #374182 border, radius 8, pad 24.
@@ -331,4 +516,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   letterSpacing: 0.5)),
         ),
       ));
+}
+
+/// One-glance astro signature tile — Business Flow §12 step 3.
+class _AstroChip extends StatelessWidget {
+  const _AstroChip(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised2.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: AppText.sans(
+                  size: 9, color: AppColors.textMuted, letterSpacing: 0.6)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: AppText.sans(
+                  size: 13, weight: FontWeight.w600, color: AppColors.gold)),
+        ],
+      ),
+    );
+  }
 }

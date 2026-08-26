@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'app_shell.dart';
 import 'screens/auth/splash_screen.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/onboarding/welcome_screen.dart';
+import 'services/auth_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +14,7 @@ void main() {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
+  AuthService.init();
   runApp(const TrafficJamApp());
 }
 
@@ -28,7 +32,9 @@ class TrafficJamApp extends StatelessWidget {
   }
 }
 
-/// Shows the splash briefly on launch, then reveals the main app shell.
+/// Shows the splash while a stored session (if any) is checked against the
+/// backend, then routes to Login / Welcome (onboarding) / the main app shell
+/// accordingly — see AuthService.restoreSession.
 class _RootGate extends StatefulWidget {
   const _RootGate();
 
@@ -37,28 +43,39 @@ class _RootGate extends StatefulWidget {
 }
 
 class _RootGateState extends State<_RootGate> {
+  // Gates the splash independently of AuthService.state — otherwise the
+  // ValueListenableBuilder below would react the instant restoreSession()
+  // resolves, which can be near-instant and flash the splash off too fast.
   bool _ready = false;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer(const Duration(milliseconds: 2200), () {
-      if (mounted) setState(() => _ready = true);
-    });
+    unawaited(_bootstrap());
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  Future<void> _bootstrap() async {
+    await Future.wait([
+      AuthService.restoreSession(),
+      Future.delayed(const Duration(milliseconds: 900)),
+    ]);
+    if (mounted) setState(() => _ready = true);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Return the screen straight from `home` so it inherits tight full-screen
-    // constraints. (An AnimatedSwitcher's internal Stack was letting the splash
-    // Scaffold shrink-wrap to its content — the half-width render.)
-    return _ready ? const AppShell() : const SplashScreen();
+    if (!_ready) return const SplashScreen();
+
+    return ValueListenableBuilder<AuthState>(
+      valueListenable: AuthService.state,
+      builder: (context, auth, _) {
+        return switch (auth.status) {
+          AuthStatus.unknown => const SplashScreen(),
+          AuthStatus.loggedOut => const LoginScreen(),
+          AuthStatus.loggedIn =>
+            auth.onboardingComplete ? const AppShell() : const WelcomeScreen(),
+        };
+      },
+    );
   }
 }

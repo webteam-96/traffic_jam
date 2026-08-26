@@ -5,11 +5,19 @@ import 'package:flutter/services.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/services/auth_service.dart';
+import 'package:traffic_jam/services/api_client.dart';
 
 /// OTP verification (pushed). Six frosted digit boxes fed by one hidden field,
-/// a live resend countdown, and the VERIFY CTA. All mocked — no API.
+/// a live resend countdown, and the VERIFY CTA.
+///
+/// Wired to the backend's dev-mode login (`POST /auth/dev-login`) — a
+/// stand-in for real Firebase phone-OTP until that's configured. The fixed
+/// dev code is always "123456", any phone number.
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key});
+  const OtpScreen({super.key, this.phoneNumber = ''});
+
+  final String phoneNumber;
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -23,6 +31,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final _focus = FocusNode();
   Timer? _timer;
   int _remaining = _resendSeconds;
+  bool _verifying = false;
 
   @override
   void initState() {
@@ -59,6 +68,25 @@ class _OtpScreenState extends State<OtpScreen> {
     return '$m:$s';
   }
 
+  Future<void> _verify() async {
+    setState(() => _verifying = true);
+    try {
+      await AuthService.loginWithDevOtp('+91${widget.phoneNumber}', _code);
+      if (!mounted) return;
+      // AuthService.state has already flipped to loggedIn — pop back to the
+      // root route so main.dart's _RootGate renders Welcome/Shell for it.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _verifying = false);
+      toast(context, e.code == 'INVALID_OTP' ? 'Incorrect code — try again.' : e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _verifying = false);
+      toast(context, "Couldn't reach the server — check your connection.");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
@@ -78,8 +106,13 @@ class _OtpScreenState extends State<OtpScreen> {
           Text('Verify your number', style: AppText.displayLg),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Enter the 6-digit code sent to +91 •••• ••1234',
+            'Enter the 6-digit code sent to +91 ${widget.phoneNumber}',
             style: AppText.body,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'Dev mode — no real SMS is sent. Use code 123456.',
+            style: AppText.bodySmall.copyWith(color: AppColors.gold),
           ),
           const SizedBox(height: AppSpacing.section),
 
@@ -119,10 +152,9 @@ class _OtpScreenState extends State<OtpScreen> {
           _resendRow(),
           const SizedBox(height: AppSpacing.section),
           GoldButton(
-            label: 'VERIFY & CONTINUE',
+            label: _verifying ? 'VERIFYING…' : 'VERIFY & CONTINUE',
             icon: Icons.check_circle_outline,
-            onPressed:
-                _code.length == _len ? () => goToWelcome(context) : null,
+            onPressed: (_code.length == _len && !_verifying) ? _verify : null,
           ),
           const SizedBox(height: AppSpacing.md),
           Center(

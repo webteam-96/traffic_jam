@@ -4,16 +4,10 @@ import '../theme/app_assets.dart';
 import '../widgets/widgets.dart';
 import '../nav.dart';
 import 'notifications_screen.dart';
-import 'details/kundli_screen.dart';
+import 'kundli/kundli_landing_screen.dart';
 import 'details/traffic_signal_screen.dart';
 import 'details/vibe_meter_screen.dart';
 import 'profile/book_appointment_screen.dart';
-import 'cosmic_foundations/zodiac_signs_screen.dart';
-import 'cosmic_foundations/planets_screen.dart';
-import 'cosmic_foundations/houses_screen.dart';
-import 'cosmic_foundations/elements_screen.dart';
-import 'cosmic_foundations/nakshatras_screen.dart';
-import 'cosmic_foundations/yog_screen.dart';
 
 /// Home dashboard — Figma node 1:711.
 /// Action hub (2x2) · Today's Panchang · Celestial Vibe Meter ·
@@ -85,7 +79,7 @@ class _ActionHub extends StatelessWidget {
   void _onTap(BuildContext context, int i) {
     switch (i) {
       case 0:
-        pushScreen(context, KundliScreen.new);
+        pushScreen(context, KundliLandingScreen.new);
       case 1:
         onOpenTab?.call(1); // Panchang tab
       case 2:

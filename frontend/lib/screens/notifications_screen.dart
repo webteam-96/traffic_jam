@@ -12,15 +12,18 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
+enum _Source { system, team }
+
 class _Notif {
   const _Notif(this.icon, this.tint, this.title, this.body, this.category,
-      this.time);
+      this.time, this.source);
   final IconData icon;
   final Color tint;
   final String title;
   final String body;
   final String category;
   final String time;
+  final _Source source;
 }
 
 const List<_Notif> _kNotifs = [
@@ -31,6 +34,7 @@ const List<_Notif> _kNotifs = [
     'Moon in Taurus supports financial decisions today.',
     'Morning Briefing',
     '7:00 AM',
+    _Source.system,
   ),
   _Notif(
     Icons.warning_amber_rounded,
@@ -39,6 +43,7 @@ const List<_Notif> _kNotifs = [
     'Avoid starting new ventures until the window passes.',
     'Warning',
     '1h ago',
+    _Source.system,
   ),
   _Notif(
     Icons.auto_awesome_rounded,
@@ -47,6 +52,7 @@ const List<_Notif> _kNotifs = [
     'Growth amplified — a favourable window for bold moves.',
     'Transit',
     '3h ago',
+    _Source.system,
   ),
   _Notif(
     Icons.spa_rounded,
@@ -55,6 +61,16 @@ const List<_Notif> _kNotifs = [
     'Chant the Budha mantra to steady Mercury this week.',
     'Remedy',
     '5h ago',
+    _Source.system,
+  ),
+  _Notif(
+    Icons.celebration_outlined,
+    AppColors.amber,
+    'Happy Diwali from the Traffic Jam team!',
+    'May the festival of lights bring you clarity and prosperity.',
+    'Announcement',
+    '20h ago',
+    _Source.team,
   ),
   _Notif(
     Icons.calendar_month_rounded,
@@ -63,13 +79,14 @@ const List<_Notif> _kNotifs = [
     'Seven days of vibe scores and key transits await.',
     'Forecast',
     '1d ago',
+    _Source.system,
   ),
 ];
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   // Unread state, indexed to _kNotifs. Newest three start unread.
   final List<bool> _read = List<bool>.generate(_kNotifs.length, (i) => i > 2);
-  int _filter = 0; // 0 = All, 1 = Unread
+  int _filter = 0; // 0 = All, 1 = System, 2 = Team
 
   void _markAllRead() => setState(() {
         for (var i = 0; i < _read.length; i++) {
@@ -81,7 +98,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final indices = [
       for (var i = 0; i < _kNotifs.length; i++)
-        if (_filter == 0 || !_read[i]) i,
+        if (_filter == 0 ||
+            (_filter == 1 && _kNotifs[i].source == _Source.system) ||
+            (_filter == 2 && _kNotifs[i].source == _Source.team))
+          i,
     ];
     final unread = _read.where((r) => !r).length;
 
@@ -112,7 +132,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
           const SizedBox(height: AppSpacing.xl),
           PillToggle(
-            options: const ['All', 'Unread'],
+            options: const ['All', 'System', 'Team'],
             selectedIndex: _filter,
             onChanged: (i) => setState(() => _filter = i),
           ),
@@ -196,14 +216,49 @@ class _NotifRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(
-                  '${notif.category.toUpperCase()}  ·  ${notif.time}',
-                  style: AppText.microLabel.copyWith(color: AppColors.textTan),
+                Row(
+                  children: [
+                    _SourceTag(source: notif.source),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        '${notif.category.toUpperCase()}  ·  ${notif.time}',
+                        style: AppText.microLabel.copyWith(color: AppColors.textTan),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small tag distinguishing an app-generated alert from a team announcement.
+class _SourceTag extends StatelessWidget {
+  const _SourceTag({required this.source});
+  final _Source source;
+
+  @override
+  Widget build(BuildContext context) {
+    final isTeam = source == _Source.team;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: (isTeam ? AppColors.gold : AppColors.textMuted).withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: Text(
+        isTeam ? 'TEAM' : 'SYSTEM',
+        style: AppText.sans(
+          size: 8,
+          weight: FontWeight.w700,
+          color: isTeam ? AppColors.gold : AppColors.textMuted,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
