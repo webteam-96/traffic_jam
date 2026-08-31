@@ -10,7 +10,7 @@ class GlassCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(AppSpacing.cardPad),
-    this.radius = AppRadius.md,
+    this.radius = AppRadius.lg,
     this.borderColor = AppColors.borderFaint,
     this.fill = AppColors.surface,
     this.fillOpacity = 0.4,
@@ -44,7 +44,14 @@ class GlassCard extends StatelessWidget {
       width: width,
       padding: padding,
       decoration: BoxDecoration(
-        color: fill.withValues(alpha: fillOpacity),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            fill.withValues(alpha: (fillOpacity + 0.06).clamp(0.0, 1.0)),
+            fill.withValues(alpha: fillOpacity),
+          ],
+        ),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: borderColor),
       ),
@@ -69,6 +76,23 @@ class GlassCard extends StatelessWidget {
               )
             : content,
       ),
+    );
+
+    // Soft floating shadow so cards read as raised above the backdrop
+    // rather than flush with it — same navy/black already used elsewhere
+    // (e.g. the Home FAB), just applied here too.
+    card = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.bgDeepest.withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: card,
     );
 
     if (onTap != null || onLongPress != null) {

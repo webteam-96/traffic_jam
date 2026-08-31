@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
+import 'package:traffic_jam/services/subscription_api.dart';
+import 'package:traffic_jam/services/api_client.dart';
+import 'package:traffic_jam/nav.dart';
 
-/// Subscription / paywall — three plan cards with a selected-plan state.
-/// Pushed screen, so it roots in DetailScaffold.
-/// ponytail: plans are mocked const data; wire to a billing SDK + real prices
-/// when the store integration exists.
+/// Subscription / paywall — plan cards fetched from the real Subscription
+/// Service, with the user's current tier highlighted as CURRENT.
+/// Checkout surfaces a friendly message until a payment gateway is wired up.
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
 
@@ -14,50 +16,110 @@ class SubscriptionScreen extends StatefulWidget {
 }
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
-  static const _plans = <_Plan>[
-    _Plan(
-      name: 'Free',
-      price: '₹0',
-      period: 'forever',
-      badge: 'CURRENT',
-      features: [
-        'Daily traffic signal',
-        'Basic Panchang',
-        'One saved birth chart',
-      ],
-    ),
-    _Plan(
-      name: 'Saga+ Monthly',
-      price: '₹499',
-      period: '/mo',
-      badge: 'POPULAR',
-      popular: true,
-      features: [
-        'Unlimited chart readings',
-        'Live Rahu Kaal alerts',
-        'Ask Jay — priority answers',
-        'Full Dasha & transit timeline',
-      ],
-    ),
-    _Plan(
-      name: 'Annual',
-      price: '₹3,999',
-      period: '/yr',
-      note: 'Save 33% vs monthly',
-      features: [
-        'Everything in Saga+ Monthly',
-        'Two months free',
-        'Yearly remedy roadmap',
-        'Early access to new features',
-      ],
-    ),
-  ];
+  List<Map<String, dynamic>> _plans = [];
+  String? _currentTier;
+  String? _currentCycle;
+  int _selected = 0;
+  bool _loading = true;
+  bool _errored = false;
+  bool _checkingOut = false;
 
-  // Default to the popular monthly plan.
-  int _selected = 1;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        SubscriptionApi.getPlans(),
+        SubscriptionApi.getSubscription(),
+      ]);
+      if (!mounted) return;
+      final plans = results[0] as List<Map<String, dynamic>>;
+      final current = results[1] as Map<String, dynamic>;
+      setState(() {
+        _plans = plans;
+        _currentTier = current['tier'] as String?;
+        _currentCycle = current['cycle'] as String?;
+        _selected = _defaultSelection(plans);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
+  }
+
+  int _defaultSelection(List<Map<String, dynamic>> plans) {
+    // Prefer the popular "Saga+ Monthly" plan; fall back to the first entry.
+    final i = plans.indexWhere((p) => p['id'] == 'saga_plus_monthly');
+    return i >= 0 ? i : 0;
+  }
+
+  // The Free tier has no real billing cycle (the backend's Subscription
+  // record always carries a technical Monthly/Yearly default even when the
+  // tier is Free) — so match on tier alone there, and tier+cycle otherwise.
+  bool _isCurrent(Map<String, dynamic> plan) {
+    if (plan['tier'] != _currentTier) return false;
+    if (plan['tier'] == 'Free') return true;
+    return plan['cycle'] == _currentCycle;
+  }
+
+  Future<void> _upgrade() async {
+    final plan = _plans[_selected];
+    if (_isCurrent(plan)) {
+      toast(context, 'This is already your current plan');
+      return;
+    }
+    setState(() => _checkingOut = true);
+    try {
+      await SubscriptionApi.checkout(plan['id'] as String);
+      if (!mounted) return;
+      toast(context, 'Checkout started for ${plan['name']}');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.code == 'PAYMENTS_NOT_CONFIGURED') {
+        toast(context, 'Payments are coming soon — checkout isn\'t live yet.');
+      } else {
+        toast(context, e.message);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, "Couldn't reach the server — check your connection.");
+    } finally {
+      if (mounted) setState(() => _checkingOut = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const DetailScaffold(
+        title: 'Go Premium',
+        scrollable: false,
+        child: Center(
+          child: CircularProgressIndicator(
+              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+        ),
+      );
+    }
+
+    if (_errored) {
+      return DetailScaffold(
+        title: 'Go Premium',
+        scrollable: false,
+        child: Center(
+          child: Text("Couldn't load plans — check your connection.",
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
     return DetailScaffold(
       title: 'Go Premium',
       child: Column(
@@ -79,18 +141,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             _PlanCard(
               plan: _plans[i],
               selected: i == _selected,
+              current: _isCurrent(_plans[i]),
+              popular: _plans[i]['id'] == 'saga_plus_monthly',
               onTap: () => setState(() => _selected = i),
             ),
           ],
           const SizedBox(height: AppSpacing.section),
           GoldButton(
-            label: 'UPGRADE TO SAGA+',
+            label: _checkingOut
+                ? 'STARTING CHECKOUT…'
+                : (_plans.isNotEmpty && _isCurrent(_plans[_selected])
+                    ? 'CURRENT PLAN'
+                    : 'UPGRADE TO SAGA+'),
             icon: Icons.auto_awesome,
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Starting checkout for ${_plans[_selected].name}'),
-              ),
-            ),
+            onPressed: _checkingOut ? null : _upgrade,
           ),
           const SizedBox(height: AppSpacing.md),
           Center(
@@ -106,42 +170,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 }
 
-class _Plan {
-  const _Plan({
-    required this.name,
-    required this.price,
-    required this.period,
-    required this.features,
-    this.badge,
-    this.note,
-    this.popular = false,
-  });
-
-  final String name;
-  final String price;
-  final String period;
-  final List<String> features;
-  final String? badge;
-  final String? note;
-  final bool popular;
-}
-
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.selected,
+    required this.current,
+    required this.popular,
     required this.onTap,
   });
 
-  final _Plan plan;
+  final Map<String, dynamic> plan;
   final bool selected;
+  final bool current;
+  final bool popular;
   final VoidCallback onTap;
+
+  String get _price => '₹${plan['priceRupees']}';
+  String get _period => switch (plan['cycle']) {
+        'Monthly' => '/mo',
+        'Yearly' => '/yr',
+        _ => 'forever',
+      };
 
   @override
   Widget build(BuildContext context) {
+    final features = (plan['features'] as List).cast<String>();
     return GlassCard(
       onTap: onTap,
-      goldTopBorder: plan.popular,
+      goldTopBorder: popular,
       borderColor: selected ? AppColors.gold : AppColors.borderFaint,
       fillOpacity: selected ? 0.5 : 0.4,
       child: Column(
@@ -157,8 +213,12 @@ class _PlanCard extends StatelessWidget {
                 size: 22,
               ),
               const SizedBox(width: AppSpacing.md),
-              Expanded(child: Text(plan.name, style: AppText.cardTitle)),
-              if (plan.badge != null) _Badge(plan.badge!, current: !plan.popular),
+              Expanded(
+                  child: Text(plan['name'] as String, style: AppText.cardTitle)),
+              if (current)
+                const _Badge('CURRENT', current: true)
+              else if (popular)
+                const _Badge('POPULAR'),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -166,19 +226,15 @@ class _PlanCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(plan.price, style: AppText.serifValue),
+              Text(_price, style: AppText.serifValue),
               const SizedBox(width: AppSpacing.xs),
-              Text(plan.period, style: AppText.bodySmall),
+              Text(_period, style: AppText.bodySmall),
             ],
           ),
-          if (plan.note != null) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(plan.note!, style: AppText.bodySmall.copyWith(color: AppColors.success)),
-          ],
           const SizedBox(height: AppSpacing.md),
           const Divider(height: 1, thickness: 1, color: AppColors.borderFaint),
           const SizedBox(height: AppSpacing.md),
-          for (int i = 0; i < plan.features.length; i++) ...[
+          for (int i = 0; i < features.length; i++) ...[
             if (i > 0) const SizedBox(height: AppSpacing.sm),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,8 +242,7 @@ class _PlanCard extends StatelessWidget {
                 const Icon(Icons.check_circle,
                     color: AppColors.gold, size: 18),
                 const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                    child: Text(plan.features[i], style: AppText.bodySmall)),
+                Expanded(child: Text(features[i], style: AppText.bodySmall)),
               ],
             ),
           ],
@@ -209,7 +264,15 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        gradient: current
+            ? null
+            : LinearGradient(
+                colors: [
+                  AppColors.goldLight.withValues(alpha: 0.22),
+                  AppColors.goldButton.withValues(alpha: 0.14),
+                ],
+              ),
+        color: current ? color.withValues(alpha: 0.12) : null,
         borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using TrafficJam.Api.Modules.Auth;
 using TrafficJam.Api.Modules.Users;
 using Xunit;
@@ -130,6 +131,42 @@ public class UserEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLif
         var response = await client.GetAsync("/places/autocomplete?q=Mumbai");
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    // Regression test for a real bug found during end-to-end testing: editing
+    // birth data regenerated the Chart and Dasha correctly, but left
+    // GET /signal/today and /transits/today silently serving a stale cache
+    // (DailySignals row / Redis transits:{userId}:* key) computed from the
+    // OLD birth data — no error, just wrong data for the rest of the day.
+    [Fact]
+    public async Task BirthData_Editing_InvalidatesStaleSignalAndTransitCaches()
+    {
+        var client = await AuthedClientAsync("uid-stale-1");
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Person A", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+
+        var signalBefore = await client.GetFromJsonAsync<JsonElement>("/signal/today");
+        var transitsBefore = await client.GetFromJsonAsync<JsonElement>("/transits/today");
+
+        // A materially different person — different decade and birth time —
+        // so the natal Moon sign, Dasha, and everything downstream must change.
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Person B", new DateOnly(1975, 1, 1), new TimeOnly(6, 0), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+
+        var signalAfter = await client.GetFromJsonAsync<JsonElement>("/signal/today");
+        var transitsAfter = await client.GetFromJsonAsync<JsonElement>("/transits/today");
+
+        var dashaDriverBefore = signalBefore.GetProperty("breakdown").GetProperty("dasha").GetProperty("driver").GetString();
+        var dashaDriverAfter = signalAfter.GetProperty("breakdown").GetProperty("dasha").GetProperty("driver").GetString();
+        Assert.NotEqual(dashaDriverBefore, dashaDriverAfter); // different birth Moon Nakshatra -> different Dasha lord chain entirely
+
+        var moonHouseBefore = transitsBefore.GetProperty("planets").EnumerateArray()
+            .Single(p => p.GetProperty("planet").GetString() == "Moon").GetProperty("houseFromMoon").GetInt32();
+        var moonHouseAfter = transitsAfter.GetProperty("planets").EnumerateArray()
+            .Single(p => p.GetProperty("planet").GetString() == "Moon").GetProperty("houseFromMoon").GetInt32();
+        Assert.NotEqual(moonHouseBefore, moonHouseAfter); // different natal Moon sign -> different house-from-Moon for every transiting planet
     }
 
     [Fact]

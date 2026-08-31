@@ -72,9 +72,17 @@ class IconChip extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.amber.withValues(alpha: 0.1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.amber.withValues(alpha: 0.16),
+            AppColors.amber.withValues(alpha: 0.06),
+          ],
+        ),
         borderRadius:
             BorderRadius.circular(circular ? size : AppRadius.sm),
+        border: Border.all(color: AppColors.goldBorderSoft),
         boxShadow: glow
             ? [
                 BoxShadow(
@@ -143,6 +151,7 @@ class GoldButton extends StatelessWidget {
             padding: EdgeInsets.symmetric(
                 horizontal: expand ? 0 : 28),
             decoration: BoxDecoration(
+              gradient: outlined ? null : AppColors.goldButtonGradient,
               borderRadius: BorderRadius.circular(AppRadius.md),
               border: outlined
                   ? Border.all(color: AppColors.gold, width: 1.4)
@@ -151,9 +160,9 @@ class GoldButton extends StatelessWidget {
                   ? null
                   : [
                       BoxShadow(
-                        color: AppColors.goldButton.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                        color: AppColors.goldButton.withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       )
                     ],
             ),

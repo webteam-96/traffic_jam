@@ -4,10 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/models/onboarding_data.dart';
+import 'package:traffic_jam/services/user_api.dart';
 
-/// Onboarding "calculating" screen — shown while the chart is (mock) computed.
-/// Centered gold spinner + serif headline + a checklist that advances step by
-/// step (check = done, spinner = in progress, ring = pending).
+/// Onboarding "calculating" screen — shown while the real chart is computed.
+/// Centered gold spinner + serif headline + a themed checklist that advances
+/// step by step (check = done, spinner = in progress, ring = pending), while
+/// the collected [OnboardingData] is saved via `PUT /me/birth-data` in
+/// parallel. Navigates to the shell once both the (cosmetic) checklist and
+/// the (real) save have finished; shows a retry state if the save fails.
 class CalculatingScreen extends StatefulWidget {
   const CalculatingScreen({super.key});
 
@@ -16,7 +21,6 @@ class CalculatingScreen extends StatefulWidget {
 }
 
 class _CalculatingScreenState extends State<CalculatingScreen> {
-  // ponytail: mock steps inline — no backend, this is a themed loading screen.
   static const _steps = <String>[
     'Casting Lagna Kundli',
     'Placing the Moon',
@@ -27,21 +31,60 @@ class _CalculatingScreenState extends State<CalculatingScreen> {
 
   int _current = 0;
   Timer? _timer;
+  bool _checklistDone = false;
+  bool _saveDone = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    // Advance through the checklist so check/spinner/ring states are all real.
+    _runSave();
+    // Advance through the checklist so check/spinner/ring states are all
+    // real — purely cosmetic pacing, independent of the actual save below.
     _timer = Timer.periodic(const Duration(milliseconds: 900), (t) {
       if (_current >= _steps.length) {
         t.cancel();
         Future.delayed(const Duration(milliseconds: 700), () {
-          if (mounted) goToShell(context);
+          if (!mounted) return;
+          setState(() => _checklistDone = true);
+          _maybeProceed();
         });
         return;
       }
       setState(() => _current++);
     });
+  }
+
+  Future<void> _runSave() async {
+    setState(() => _error = null);
+    try {
+      var hour24 = OnboardingData.hour % 12;
+      if (!OnboardingData.isAm) hour24 += 12;
+      await UserApi.saveBirthData(
+        name: OnboardingData.name,
+        dob: OnboardingData.dob!,
+        hour24: OnboardingData.unknownTime ? null : hour24,
+        minute: OnboardingData.unknownTime ? null : OnboardingData.minute,
+        unknownTime: OnboardingData.unknownTime,
+        place: OnboardingData.place!,
+        lat: OnboardingData.lat!,
+        lng: OnboardingData.lng!,
+        timezone: OnboardingData.timezone!,
+      );
+      if (!mounted) return;
+      setState(() => _saveDone = true);
+      _maybeProceed();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() =>
+          _error = "Couldn't save your birth details — check your connection and try again.");
+    }
+  }
+
+  void _maybeProceed() {
+    if (!_checklistDone || !_saveDone) return;
+    OnboardingData.reset();
+    goToShell(context);
   }
 
   @override
@@ -52,8 +95,38 @@ class _CalculatingScreenState extends State<CalculatingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return DetailScaffold(
+        scrollable: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: AppColors.criticalText),
+                const SizedBox(height: AppSpacing.xl),
+                Text(
+                  'Something went wrong',
+                  textAlign: TextAlign.center,
+                  style: AppText.serif(size: 24, weight: FontWeight.w700),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(_error!, textAlign: TextAlign.center, style: AppText.body),
+                const SizedBox(height: AppSpacing.section),
+                GoldButton(
+                  label: 'TRY AGAIN',
+                  icon: Icons.refresh,
+                  onPressed: _runSave,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return DetailScaffold(
-      showBack: false,
       scrollable: false,
       child: Center(
         child: SingleChildScrollView(

@@ -1,33 +1,119 @@
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
+import '../../services/api_client.dart';
+import '../../services/signal_api.dart';
 
 /// Flagship "Today's Signal" detail — a pushed (non-tab) screen.
-/// Big green GO-AHEAD dial, the weighted breakdown behind the 82/100 score,
-/// and a do/avoid checklist. All data is mocked inline; no interactivity, so
-/// this is a plain StatelessWidget. (ponytail: no state = no StatefulWidget.)
-class TrafficSignalScreen extends StatelessWidget {
+/// Big dial (green/yellow/red by band), the weighted breakdown behind the
+/// score, and the four factor drivers explaining why. Wired to GET /signal/today.
+class TrafficSignalScreen extends StatefulWidget {
   const TrafficSignalScreen({super.key});
 
-  // The four weighted factors. Weights sum to 1.0 and the weighted average of
-  // the values reconstructs the 82/100 score:
-  //   .9*.30 + .8*.25 + .7*.20 + .85*.25 = 0.8225 ≈ 82.
-  static const List<_Factor> _factors = [
-    _Factor('Moon Transit', 0.90, 0.30),
-    _Factor('Panchang Quality', 0.80, 0.25),
-    _Factor('Dasha Influence', 0.70, 0.20),
-    _Factor('Planetary Transits', 0.85, 0.25),
-  ];
+  @override
+  State<TrafficSignalScreen> createState() => _TrafficSignalScreenState();
+}
 
-  static const List<_Guidance> _todo = [
-    _Guidance(true, 'Sign contracts and commit before noon — Jupiter favours '
-        'binding decisions early.'),
-    _Guidance(true, 'Begin travel and new journeys; the road ahead is clear.'),
-    _Guidance(false, 'Avoid major financial disputes until after dusk.'),
-  ];
+class _TrafficSignalScreenState extends State<TrafficSignalScreen> {
+  Map<String, dynamic>? _signal;
+  bool _loading = true;
+  String? _error; // null = no error; 'no-birth-data' or 'generic'
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final signal = await SignalApi.getToday();
+      if (!mounted) return;
+      setState(() {
+        _signal = signal;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.code == 'NO_BIRTH_DATA' ? 'no-birth-data' : 'generic';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'generic';
+      });
+    }
+  }
+
+  Color _bandColor(String band) => switch (band) {
+        'green' => AppColors.success,
+        'yellow' => AppColors.amber,
+        _ => AppColors.criticalText,
+      };
+
+  IconData _bandIcon(String band) => switch (band) {
+        'green' => Icons.check_circle,
+        'yellow' => Icons.warning_amber_rounded,
+        _ => Icons.do_not_disturb_on,
+      };
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const DetailScaffold(
+        title: "Today's Signal",
+        scrollable: false,
+        child: Center(
+          child: CircularProgressIndicator(
+              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+        ),
+      );
+    }
+
+    if (_error == 'no-birth-data') {
+      return DetailScaffold(
+        title: "Today's Signal",
+        scrollable: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+            child: Text(
+              'Save your birth details first to see your daily Traffic Signal.',
+              textAlign: TextAlign.center,
+              style: AppText.body,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_error != null || _signal == null) {
+      return DetailScaffold(
+        title: "Today's Signal",
+        scrollable: false,
+        child: Center(
+          child: Text("Couldn't load today's signal — check your connection.",
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
+    final signal = _signal!;
+    final band = signal['band'] as String;
+    final score = signal['score'] as int;
+    final label = signal['label'] as String;
+    final guidance = signal['guidance'] as String;
+    final breakdown = signal['breakdown'] as Map<String, dynamic>;
+    final weights = signal['weights'] as Map<String, dynamic>;
+    final color = _bandColor(band);
+
     return DetailScaffold(
       title: "Today's Signal",
       child: Column(
@@ -35,14 +121,12 @@ class TrafficSignalScreen extends StatelessWidget {
         children: [
           const Center(child: SectionLabel("TODAY'S TRAFFIC SIGNAL")),
           const SizedBox(height: AppSpacing.xxl),
-          Center(child: _dial()),
+          Center(child: _dial(score, color)),
           const SizedBox(height: AppSpacing.xl),
-          Center(child: _goAheadPill()),
+          Center(child: _bandPill(label, band, color)),
           const SizedBox(height: AppSpacing.xxl),
           Text(
-            'The cosmic lanes are open. Momentum favours action taken with '
-            'intent today — the planets clear the path for forward motion, '
-            'so trust the green and proceed with confidence.',
+            guidance,
             textAlign: TextAlign.center,
             style: AppText.sans(
               size: 15,
@@ -56,16 +140,16 @@ class TrafficSignalScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           const Divider(color: AppColors.surfaceRaised3, height: 1),
           const SizedBox(height: AppSpacing.xl),
-          _calcCard(),
+          _calcCard(breakdown, weights),
           const SizedBox(height: AppSpacing.section),
-          _todoCard(),
+          _driversCard(breakdown),
         ],
       ),
     );
   }
 
-  // ── Green GO-AHEAD dial ──────────────────────────────────────────────────
-  Widget _dial() {
+  // ── Score dial ───────────────────────────────────────────────────────────
+  Widget _dial(int score, Color color) {
     return Container(
       width: 208,
       height: 208,
@@ -73,14 +157,14 @@ class TrafficSignalScreen extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: RadialGradient(
           colors: [
-            AppColors.success.withValues(alpha: 0.22),
-            AppColors.success.withValues(alpha: 0.04),
+            color.withValues(alpha: 0.22),
+            color.withValues(alpha: 0.04),
           ],
         ),
-        border: Border.all(color: AppColors.success, width: 3),
+        border: Border.all(color: color, width: 3),
         boxShadow: [
           BoxShadow(
-            color: AppColors.success.withValues(alpha: 0.45),
+            color: color.withValues(alpha: 0.45),
             blurRadius: 44,
             spreadRadius: 2,
           ),
@@ -97,11 +181,11 @@ class TrafficSignalScreen extends StatelessWidget {
                 letterSpacing: 2.4,
               )),
           const SizedBox(height: AppSpacing.xs),
-          Text('82',
+          Text('$score',
               style: AppText.serif(
                 size: 68,
                 weight: FontWeight.w700,
-                color: AppColors.success,
+                color: color,
                 height: 1.0,
                 letterSpacing: -1.5,
               )),
@@ -117,26 +201,25 @@ class TrafficSignalScreen extends StatelessWidget {
     );
   }
 
-  Widget _goAheadPill() {
+  Widget _bandPill(String label, String band, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.xl, vertical: AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.success.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: AppColors.success.withValues(alpha: 0.55)),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.check_circle,
-              size: 18, color: AppColors.success),
+          Icon(_bandIcon(band), size: 18, color: color),
           const SizedBox(width: AppSpacing.sm),
-          Text('GO AHEAD',
+          Text(label.toUpperCase(),
               style: AppText.sans(
                 size: 15,
                 weight: FontWeight.w700,
-                color: AppColors.success,
+                color: color,
                 letterSpacing: 2.0,
               )),
         ],
@@ -145,7 +228,14 @@ class TrafficSignalScreen extends StatelessWidget {
   }
 
   // ── Weighted breakdown ───────────────────────────────────────────────────
-  Widget _calcCard() {
+  Widget _calcCard(Map<String, dynamic> breakdown, Map<String, dynamic> weights) {
+    const factors = [
+      ('moonTransit', 'Moon Transit'),
+      ('panchang', 'Panchang Quality'),
+      ('dasha', 'Dasha Influence'),
+      ('transits', 'Planetary Transits'),
+    ];
+
     return GlassCard(
       fill: AppColors.surfaceRaised,
       fillOpacity: 0.5,
@@ -155,13 +245,16 @@ class TrafficSignalScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (int i = 0; i < _factors.length; i++) ...[
-            MeterBar(label: _factors[i].label, value: _factors[i].value),
+          for (int i = 0; i < factors.length; i++) ...[
+            MeterBar(
+              label: factors[i].$2,
+              value: (breakdown[factors[i].$1]['score'] as int) / 100.0,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                '${(_factors[i].weight * 100).round()}% weight',
+                '${((weights[factors[i].$1] as num) * 100).round()}% weight',
                 style: AppText.sans(
                   size: 11,
                   color: AppColors.textMuted,
@@ -169,16 +262,22 @@ class TrafficSignalScreen extends StatelessWidget {
                 ),
               ),
             ),
-            if (i != _factors.length - 1)
-              const SizedBox(height: AppSpacing.lg),
+            if (i != factors.length - 1) const SizedBox(height: AppSpacing.lg),
           ],
         ],
       ),
     );
   }
 
-  // ── Do / avoid checklist ─────────────────────────────────────────────────
-  Widget _todoCard() {
+  // ── Why — the four factor drivers ───────────────────────────────────────
+  Widget _driversCard(Map<String, dynamic> breakdown) {
+    const factors = [
+      ('moonTransit', 'Moon Transit'),
+      ('panchang', 'Panchang'),
+      ('dasha', 'Dasha'),
+      ('transits', 'Transits'),
+    ];
+
     return GlassCard(
       goldTopBorder: true,
       fill: AppColors.surfaceRaised,
@@ -188,48 +287,51 @@ class TrafficSignalScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionLabel('WHAT TO DO TODAY'),
+          const SectionLabel('WHY'),
           const SizedBox(height: AppSpacing.lg),
-          for (int i = 0; i < _todo.length; i++) ...[
-            _guidanceRow(_todo[i]),
-            if (i != _todo.length - 1)
-              const SizedBox(height: AppSpacing.lg),
+          for (int i = 0; i < factors.length; i++) ...[
+            _driverRow(factors[i].$2, breakdown[factors[i].$1]['driver'] as String),
+            if (i != factors.length - 1) const SizedBox(height: AppSpacing.lg),
           ],
         ],
       ),
     );
   }
 
-  Widget _guidanceRow(_Guidance g) {
-    final color = g.isDo ? AppColors.success : AppColors.criticalText;
+  Widget _driverRow(String label, String driver) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(g.isDo ? Icons.check_circle : Icons.do_not_disturb_on,
-            size: 20, color: color),
+        const Padding(
+          padding: EdgeInsets.only(top: 2),
+          child: Icon(Icons.circle, size: 8, color: AppColors.gold),
+        ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          child: Text(g.text,
-              style: AppText.sans(
-                size: 14,
-                color: AppColors.textTan,
-                height: 1.5,
-              )),
+          child: RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: '$label — ',
+                  style: AppText.sans(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: AppColors.goldLighter,
+                  ),
+                ),
+                TextSpan(
+                  text: driver,
+                  style: AppText.sans(
+                    size: 14,
+                    color: AppColors.textTan,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
-}
-
-class _Factor {
-  final String label;
-  final double value; // 0..1 strength
-  final double weight; // 0..1 contribution
-  const _Factor(this.label, this.value, this.weight);
-}
-
-class _Guidance {
-  final bool isDo;
-  final String text;
-  const _Guidance(this.isDo, this.text);
 }

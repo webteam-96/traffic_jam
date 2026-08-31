@@ -3,6 +3,7 @@ import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/services/user_api.dart';
 import 'package:traffic_jam/services/api_client.dart';
+import 'package:traffic_jam/data/curated_cities.dart';
 import 'package:traffic_jam/nav.dart';
 
 /// Edit birth data — real form wired to GET/PUT /me/birth-data. Pushed
@@ -30,13 +31,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   bool _loading = true;
   bool _saving = false;
 
-  static const _cities = <(String, double, double, String)>[
-    ('Mumbai, Maharashtra, India', 19.0760, 72.8777, 'Asia/Kolkata'),
-    ('Delhi, India', 28.6139, 77.2090, 'Asia/Kolkata'),
-    ('Pune, Maharashtra, India', 18.5204, 73.8567, 'Asia/Kolkata'),
-    ('Bengaluru, Karnataka, India', 12.9716, 77.5946, 'Asia/Kolkata'),
-    ('Ahmedabad, Gujarat, India', 23.0225, 72.5714, 'Asia/Kolkata'),
-  ];
+  static const _cities = kCuratedCities;
 
   @override
   void initState() {
@@ -181,24 +176,21 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
           const SectionLabel('FULL NAME'),
           const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _name,
-            textCapitalization: TextCapitalization.words,
-            cursorColor: AppColors.gold,
-            style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'e.g. Ananya Sharma',
-              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
-              filled: true,
-              fillColor: AppColors.bgDeep,
-              contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 16),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.gold),
+          GlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: TextField(
+              controller: _name,
+              textCapitalization: TextCapitalization.words,
+              cursorColor: AppColors.gold,
+              style: AppText.sans(
+                  size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                hintText: 'e.g. Ananya Sharma',
+                hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
               ),
             ),
           ),

@@ -25,7 +25,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
-      showBack: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

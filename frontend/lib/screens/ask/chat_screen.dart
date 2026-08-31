@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
+import '../../services/consult_api.dart';
+import '../../services/api_client.dart';
+import '../../nav.dart';
 
 /// Astrologer chat thread (pushed screen). Context chips + alternating
-/// message bubbles + pinned input bar. All data mocked inline.
+/// message bubbles + pinned input bar. Wired to GET/POST
+/// /consult/questions/{id}/messages.
 class AskChatScreen extends StatefulWidget {
-  const AskChatScreen({super.key});
+  const AskChatScreen({super.key, required this.questionId});
+  final String questionId;
 
   @override
   State<AskChatScreen> createState() => _AskChatScreenState();
@@ -13,30 +18,30 @@ class AskChatScreen extends StatefulWidget {
 
 class _AskChatScreenState extends State<AskChatScreen> {
   final _input = TextEditingController();
+  List<Map<String, dynamic>> _messages = [];
+  bool _loading = true;
+  bool _sending = false;
 
-  // Mock thread — seeded, grows when you send.
-  final List<_Msg> _messages = [
-    const _Msg(
-      "Namaste. I've pulled up your birth chart. What's weighing on you today?",
-      fromJay: true,
-    ),
-    const _Msg(
-      "I've been offered a new job, but Saturn is sitting in my 10th house right now. Should I switch?",
-      fromJay: false,
-    ),
-    const _Msg(
-      "Saturn in the 10th is a test of patience, not a stop sign. It rewards disciplined moves. The offer itself is well-timed — Jupiter aspects your career house through August.",
-      fromJay: true,
-    ),
-    const _Msg(
-      "That's reassuring. When would be the most auspicious day to sign?",
-      fromJay: false,
-    ),
-    const _Msg(
-      "Avoid the Rahu Kaal windows. The 22nd, after 11 AM, carries a clean Mercury–Moon alignment — ideal for contracts and commitments.",
-      fromJay: true,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final messages = await ConsultApi.getMessages(widget.questionId);
+      if (!mounted) return;
+      setState(() {
+        _messages = messages;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      toast(context, "Couldn't load this conversation — check your connection.");
+    }
+  }
 
   @override
   void dispose() {
@@ -44,62 +49,91 @@ class _AskChatScreenState extends State<AskChatScreen> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final t = _input.text.trim();
-    if (t.isEmpty) return;
-    setState(() {
-      _messages.add(_Msg(t, fromJay: false));
-      _input.clear();
-    });
+    if (t.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    _input.clear();
+    try {
+      final msg = await ConsultApi.sendMessage(widget.questionId, t);
+      if (!mounted) return;
+      setState(() => _messages = [..._messages, msg]);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      toast(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, "Couldn't send — check your connection.");
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
       title: 'Jay',
-      scrollable: true,
+      scrollable: !_loading,
       bottomBar: _inputBar(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Context chips ─────────────────────────────────────
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: const [
-              _Chip(Icons.auto_awesome, 'Birth chart attached'),
-              _Chip(Icons.work_outline, 'Career'),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Center(
-            child: Text('TODAY',
-                style: AppText.microLabel.copyWith(letterSpacing: 1.6)),
-          ),
-          const SizedBox(height: AppSpacing.lg),
+      child: _loading
+          ? const Center(
+              child: CircularProgressIndicator(
+                  strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Context chips ─────────────────────────────────────
+                const Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _Chip(Icons.auto_awesome, 'Birth chart attached'),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                if (_messages.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                    child: Center(
+                      child: Text(
+                        'Your question has been sent to Jay. Replies will '
+                        'appear here within your plan\'s SLA window.',
+                        textAlign: TextAlign.center,
+                        style: AppText.sans(size: 14, color: AppColors.textTan),
+                      ),
+                    ),
+                  )
+                else ...[
+                  Center(
+                    child: Text('THREAD',
+                        style: AppText.microLabel.copyWith(letterSpacing: 1.6)),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  for (final m in _messages) ...[
+                    _bubble(m),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
+                ],
 
-          // ── Message bubbles ───────────────────────────────────
-          for (final m in _messages) ...[
-            _bubble(m),
-            const SizedBox(height: AppSpacing.md),
-          ],
-
-          // Clearance so the last bubble sits above the pinned input bar.
-          const SizedBox(height: 80),
-        ],
-      ),
+                // Clearance so the last bubble sits above the pinned input bar.
+                const SizedBox(height: 80),
+              ],
+            ),
     );
   }
 
   // ── One message row ─────────────────────────────────────────
-  Widget _bubble(_Msg m) {
+  Widget _bubble(Map<String, dynamic> m) {
+    final fromJay = m['sender'] == 'astrologer';
+    final text = m['text'] as String;
     final maxW = MediaQuery.sizeOf(context).width * 0.76;
     final content = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
-      child: m.fromJay ? _jayBubble(m.text) : _userBubble(m.text),
+      child: fromJay ? _jayBubble(text) : _userBubble(text),
     );
 
-    if (m.fromJay) {
+    if (fromJay) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -209,7 +243,7 @@ class _AskChatScreenState extends State<AskChatScreen> {
               ),
               const SizedBox(width: AppSpacing.sm),
               GestureDetector(
-                onTap: _send,
+                onTap: _sending ? null : _send,
                 child: Container(
                   width: 48,
                   height: 48,
@@ -266,10 +300,4 @@ class _Chip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Msg {
-  const _Msg(this.text, {required this.fromJay});
-  final String text;
-  final bool fromJay;
 }

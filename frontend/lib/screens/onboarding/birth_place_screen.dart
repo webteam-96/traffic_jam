@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/data/curated_cities.dart';
+import 'package:traffic_jam/models/onboarding_data.dart';
 
-/// Onboarding step 3 of 4 — birth place. Search field + mocked city
-/// suggestions; tapping a row selects it (gold border). Pushed screen, so it
-/// roots in DetailScaffold.
+/// Onboarding step 3 of 4 — birth place. Search field + curated city
+/// suggestions (each with real lat/lng/timezone — stands in for Google
+/// Places until a real API key is configured); tapping a row selects it
+/// (gold border). Pushed screen, so it roots in DetailScaffold.
 class BirthPlaceScreen extends StatefulWidget {
   const BirthPlaceScreen({super.key});
 
@@ -15,15 +18,23 @@ class BirthPlaceScreen extends StatefulWidget {
 
 class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
   final _search = TextEditingController();
-  int _selected = 0;
+  String? _selectedCity = OnboardingData.place;
 
-  // ponytail: static suggestions — swap for a geocoding lookup when the flow needs it.
-  static const _cities = [
-    'Mumbai, Maharashtra, India',
-    'Delhi, India',
-    'Pune, Maharashtra, India',
-    'Bengaluru, Karnataka, India',
-  ];
+  List<(String, double, double, String)> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return kCuratedCities;
+    return kCuratedCities.where((c) => c.$1.toLowerCase().contains(q)).toList();
+  }
+
+  void _continue(BuildContext context) {
+    if (_selectedCity == null) return;
+    final city = kCuratedCities.firstWhere((c) => c.$1 == _selectedCity);
+    OnboardingData.place = city.$1;
+    OnboardingData.lat = city.$2;
+    OnboardingData.lng = city.$3;
+    OnboardingData.timezone = city.$4;
+    goToConsent(context);
+  }
 
   @override
   void dispose() {
@@ -90,28 +101,29 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
                 borderSide: const BorderSide(color: AppColors.gold),
               ),
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: AppSpacing.xl),
           const SectionLabel('SUGGESTIONS'),
           const SizedBox(height: AppSpacing.md),
-          for (int i = 0; i < _cities.length; i++) ...[
+          for (final city in _filtered) ...[
             GlassCard(
               padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-              borderColor: i == _selected
+              borderColor: city.$1 == _selectedCity
                   ? AppColors.gold
                   : AppColors.borderFaint,
-              onTap: () => setState(() => _selected = i),
+              onTap: () => setState(() => _selectedCity = city.$1),
               child: Row(
                 children: [
                   Icon(Icons.location_on,
-                      color: i == _selected
+                      color: city.$1 == _selectedCity
                           ? AppColors.gold
                           : AppColors.textMuted),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      _cities[i],
+                      city.$1,
                       style: AppText.sans(
                         size: 15,
                         weight: FontWeight.w500,
@@ -119,7 +131,7 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
                       ),
                     ),
                   ),
-                  if (i == _selected)
+                  if (city.$1 == _selectedCity)
                     const Icon(Icons.check_circle,
                         color: AppColors.gold, size: 20),
                 ],
@@ -131,7 +143,7 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
           GoldButton(
             label: 'CONTINUE',
             icon: Icons.arrow_forward,
-            onPressed: () => goToConsent(context),
+            onPressed: _selectedCity == null ? null : () => _continue(context),
           ),
         ],
       ),

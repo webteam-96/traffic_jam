@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/models/onboarding_data.dart';
 
-/// Onboarding step 1 of 4 — identity. Name field + date-of-birth row, all
-/// mocked. Pushed screen, so it roots in DetailScaffold.
+/// Onboarding step 1 of 4 — identity. Name field + date-of-birth picker,
+/// both persisted into [OnboardingData]. Pushed screen, so it roots in
+/// DetailScaffold.
 class IdentityScreen extends StatefulWidget {
   const IdentityScreen({super.key});
 
@@ -13,10 +15,43 @@ class IdentityScreen extends StatefulWidget {
 }
 
 class _IdentityScreenState extends State<IdentityScreen> {
-  final _name = TextEditingController();
+  late final _name = TextEditingController(text: OnboardingData.name ?? '');
+  DateTime? _dob = OnboardingData.dob;
 
-  // ponytail: mocked DOB — wire a real showDatePicker when the flow needs it.
-  static const _dob = '24 October 1988';
+  bool get _canContinue => _name.text.trim().isNotEmpty && _dob != null;
+
+  String _monthName(int m) => const [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ][m - 1];
+
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dob ?? DateTime(now.year - 25),
+      firstDate: DateTime(1900),
+      lastDate: now,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.gold,
+            onPrimary: AppColors.textOnGold,
+            surface: AppColors.navBarBase,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() => _dob = picked);
+  }
+
+  void _continue(BuildContext context) {
+    OnboardingData.name = _name.text.trim();
+    OnboardingData.dob = _dob;
+    goToBirthTime(context);
+  }
 
   @override
   void dispose() {
@@ -81,6 +116,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 borderSide: const BorderSide(color: AppColors.gold),
               ),
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: AppSpacing.xl),
           const SectionLabel('DATE OF BIRTH'),
@@ -88,14 +124,16 @@ class _IdentityScreenState extends State<IdentityScreen> {
           GlassCard(
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-            onTap: () => toast(context, 'Date picker coming soon'),
+            onTap: _pickDob,
             child: Row(
               children: [
                 const Icon(Icons.calendar_month, color: AppColors.gold),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
-                    _dob,
+                    _dob == null
+                        ? 'Select date of birth'
+                        : '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
                     style: AppText.serif(size: 18, weight: FontWeight.w600),
                   ),
                 ),
@@ -108,7 +146,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
           GoldButton(
             label: 'CONTINUE',
             icon: Icons.arrow_forward,
-            onPressed: () => goToBirthTime(context),
+            onPressed: _canContinue ? () => _continue(context) : null,
           ),
         ],
       ),

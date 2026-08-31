@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../theme/app_assets.dart';
 import '../widgets/widgets.dart';
 import '../nav.dart';
+import '../services/panchang_api.dart';
 import 'notifications_screen.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'details/traffic_signal_screen.dart';
@@ -139,8 +140,39 @@ class _ActionHub extends StatelessWidget {
 }
 
 // ── Today's Panchang ──────────────────────────────────────────────────────────
-class _TodaysPanchangCard extends StatelessWidget {
+const _weekdayNames = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+];
+const _monthNames = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+class _TodaysPanchangCard extends StatefulWidget {
   const _TodaysPanchangCard();
+
+  @override
+  State<_TodaysPanchangCard> createState() => _TodaysPanchangCardState();
+}
+
+class _TodaysPanchangCardState extends State<_TodaysPanchangCard> {
+  Map<String, dynamic>? _panchang;
+
+  @override
+  void initState() {
+    super.initState();
+    PanchangApi.getToday().then((panchang) {
+      if (!mounted) return;
+      setState(() => _panchang = panchang);
+    }).catchError((_) {
+      // Silent — Home stays on its placeholder dashes; the Panchang tab
+      // itself will surface the real error if the user opens it.
+    });
+  }
+
+  String _dateLabel(String isoDate) {
+    final d = DateTime.parse(isoDate);
+    return '${_weekdayNames[d.weekday - 1]}, ${_monthNames[d.month - 1]} ${d.day}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,6 +184,16 @@ class _TodaysPanchangCard extends StatelessWidget {
             for (final l in lines) Text(l, style: AppText.serifValue),
           ],
         );
+
+    final panchang = _panchang;
+    final dateLabel = panchang == null ? '—' : _dateLabel(panchang['date'] as String);
+    final tithiName = panchang == null
+        ? '—'
+        : (panchang['tithi'] as Map<String, dynamic>)['name'] as String;
+    final nakshatraName = panchang == null
+        ? '—'
+        : (panchang['nakshatra'] as Map<String, dynamic>)['name'] as String;
+    final paksha = panchang == null ? '' : panchang['paksha'] as String;
 
     return GlassCard(
       goldTopBorder: true,
@@ -167,7 +209,7 @@ class _TodaysPanchangCard extends StatelessWidget {
                   children: [
                     const SectionLabel("TODAY'S PANCHANG"),
                     const SizedBox(height: AppSpacing.xs),
-                    Text('Tuesday, May 14', style: AppText.displayLg),
+                    Text(dateLabel, style: AppText.displayLg),
                   ],
                 ),
               ),
@@ -179,8 +221,8 @@ class _TodaysPanchangCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: col('TITHI', ['Shukla', 'Saptami'])),
-              Expanded(child: col('NAKSHATRA', ['Pushya'])),
+              Expanded(child: col('TITHI', [if (paksha.isNotEmpty) paksha, tithiName])),
+              Expanded(child: col('NAKSHATRA', [nakshatraName])),
             ],
           ),
         ],

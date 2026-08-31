@@ -3,13 +3,58 @@ import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../nav.dart';
 import '../../models/kundli_profile.dart';
+import '../../services/chart_api.dart';
+import '../../services/api_client.dart';
 import 'dasha_timeline_screen.dart';
+
+const _monthNamesFull = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+DateTime _parseUtc(String iso) {
+  final raw = DateTime.parse(iso);
+  final utc = raw.isUtc
+      ? raw
+      : DateTime.utc(raw.year, raw.month, raw.day, raw.hour, raw.minute,
+          raw.second, raw.millisecond, raw.microsecond);
+  return utc.toLocal();
+}
+
+String _formatDeg(double deg) {
+  final wholeDeg = deg.floor();
+  final minutes = ((deg - wholeDeg) * 60).round();
+  if (minutes == 60) {
+    return "${(wholeDeg + 1).toString().padLeft(2, '0')}°00'";
+  }
+  return "${wholeDeg.toString().padLeft(2, '0')}°${minutes.toString().padLeft(2, '0')}'";
+}
+
+String _monthYear(DateTime d) => '${_monthNamesFull[d.month - 1].toUpperCase()} ${d.year}';
+String _dateShort(DateTime d) =>
+    '${d.day} ${_monthNamesFull[d.month - 1].substring(0, 3)} ${d.year}';
+
+double _elapsedFraction(DateTime start, DateTime end) {
+  final total = end.difference(start).inMilliseconds;
+  if (total <= 0) return 1.0;
+  final elapsed = DateTime.now().difference(start).inMilliseconds;
+  return (elapsed / total).clamp(0.0, 1.0);
+}
+
+Map<String, dynamic>? _currentOf(List<dynamic> periods) {
+  for (final p in periods) {
+    if ((p as Map<String, dynamic>)['current'] == true) return p;
+  }
+  return null;
+}
 
 /// Kundli detail — Business Flow §5.2. Six sections behind one top-level
 /// PillToggle: Planet, Vimshottari Dasha, Charts (D1/D9/D10/D60 selector,
 /// North/South style toggle), KP System, Cusp Chart. Works for the user's own
-/// chart (`profile` omitted) or a generated one (family/friend), so "Get
-/// Kundli" pushes the same screen with a different [profile].
+/// chart (`profile` omitted) or a generated one (family/friend). Only "My
+/// Kundli" is wired to GET /chart and /dasha — a generated family/friend
+/// profile has no backend behind it yet (see KundliProfile), so that path
+/// keeps its illustrative mock content unchanged.
 class KundliScreen extends StatefulWidget {
   const KundliScreen({super.key, this.profile});
 
@@ -24,9 +69,49 @@ class _KundliScreenState extends State<KundliScreen> {
   int _chartIndex = 0; // D1 / D9 / D10 / D60
   bool _southIndian = false;
 
+  Map<String, dynamic>? _chart;
+  Map<String, dynamic>? _dasha;
+  bool _loading = false;
+  String? _error; // 'no-data' | 'generic' | null
+
   static const _sections = ['Planet', 'Dasha', 'Charts', 'KP System', 'Cusp'];
 
   KundliProfile get _profile => widget.profile ?? KundliProfile.own;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_profile.isOwn) _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final chart = await ChartApi.getChart();
+      final dasha = await ChartApi.getDasha();
+      if (!mounted) return;
+      setState(() {
+        _chart = chart;
+        _dasha = dasha;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = (e.code == 'NO_CHART' || e.code == 'NO_DASHA') ? 'no-data' : 'generic';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'generic';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,24 +149,58 @@ class _KundliScreenState extends State<KundliScreen> {
   }
 
   Widget _body(KundliProfile profile) {
+    if (profile.isOwn && _loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 80),
+        child: Center(
+          child: CircularProgressIndicator(
+              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+        ),
+      );
+    }
+
+    if (profile.isOwn && _error == 'no-data') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
+        child: Center(
+          child: Text('Save your birth details first to see your Kundli.',
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
+    if (profile.isOwn && _error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
+        child: Center(
+          child: Text("Couldn't load your birth chart — check your connection.",
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
+    final chart = profile.isOwn ? _chart : null;
+    final dasha = profile.isOwn ? _dasha : null;
+
     switch (_section) {
       case 0:
-        return const _PlanetTab();
+        return _PlanetTab(chart: chart);
       case 1:
-        return const _DashaTab();
+        return _DashaTab(dasha: dasha);
       case 2:
         return _ChartsTab(
           profile: profile,
+          chart: chart,
           chartIndex: _chartIndex,
           southIndian: _southIndian,
           onChartChanged: (i) => setState(() => _chartIndex = i),
           onStyleChanged: (v) => setState(() => _southIndian = v),
         );
       case 3:
-        return const _KpTab();
+        return _KpTab(chart: chart);
       case 4:
       default:
-        return const _CuspTab();
+        return _CuspTab(chart: chart);
     }
   }
 }
@@ -140,9 +259,11 @@ class _PlanetRow {
 }
 
 class _PlanetTab extends StatelessWidget {
-  const _PlanetTab();
+  const _PlanetTab({this.chart});
 
-  static const _rows = <_PlanetRow>[
+  final Map<String, dynamic>? chart;
+
+  static const _mockRows = <_PlanetRow>[
     _PlanetRow('Sun', 'Aquarius', "28°12'", 7, 'P. Bhadrapada (3)',
         'Sun in the 7th sharpens how you show up in partnerships — visible, direct, sometimes a little dominant in negotiations.'),
     _PlanetRow('Moon', 'Taurus', "04°22'", 10, 'Krittika (3)',
@@ -165,6 +286,9 @@ class _PlanetTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final d1 = chart == null ? null : chart!['d1'] as List<dynamic>;
+    final moonNakshatra = chart == null ? null : chart!['nakshatra'] as String;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -172,7 +296,7 @@ class _PlanetTab extends StatelessWidget {
             style: AppText.serif(size: 22, color: AppColors.textPrimary)),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Tap any planet for what its placement means in plain language.',
+          'Tap any planet for its exact placement.',
           style: AppText.sans(size: 13, color: AppColors.textMuted),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -181,10 +305,15 @@ class _PlanetTab extends StatelessWidget {
           radius: AppRadius.md,
           child: Column(
             children: [
-              _row(const ['GRAHA', 'RASHI', 'DEG', 'H', 'NAKSHATRA'],
-                  isHeader: true),
-              for (int i = 0; i < _rows.length; i++)
-                _tapRow(context, _rows[i], last: i == _rows.length - 1),
+              _row(const ['GRAHA', 'RASHI', 'DEG', 'H'], isHeader: true),
+              if (d1 != null)
+                for (int i = 0; i < d1.length; i++)
+                  _tapRowReal(context, d1[i] as Map<String, dynamic>,
+                      moonNakshatra: (d1[i]['planet'] as String) == 'Moon' ? moonNakshatra : null,
+                      last: i == d1.length - 1)
+              else
+                for (int i = 0; i < _mockRows.length; i++)
+                  _tapRow(context, _mockRows[i], last: i == _mockRows.length - 1),
             ],
           ),
         ),
@@ -192,11 +321,25 @@ class _PlanetTab extends StatelessWidget {
     );
   }
 
+  Widget _tapRowReal(BuildContext context, Map<String, dynamic> p,
+      {String? moonNakshatra, required bool last}) {
+    final retro = p['retrograde'] as bool;
+    final degree = '${_formatDeg(p['degreeInSign'] as double)}${retro ? ' R' : ''}';
+    final house = p['house'] as int?;
+    return InkWell(
+      onTap: () => _showExplainerReal(context, p, moonNakshatra),
+      child: _row(
+        [p['planet'] as String, p['sign'] as String, degree, house == null ? '—' : '$house'],
+        last: last,
+      ),
+    );
+  }
+
   Widget _tapRow(BuildContext context, _PlanetRow r, {required bool last}) {
     return InkWell(
       onTap: () => _showExplainer(context, r),
       child: _row(
-        [r.graha, r.sign, r.degree, '${r.house}', r.nakshatra],
+        [r.graha, r.sign, r.degree, '${r.house}'],
         last: last,
       ),
     );
@@ -236,12 +379,59 @@ class _PlanetTab extends StatelessWidget {
         children: [
           cell(0, 4, color: AppColors.gold),
           cell(1, 5, color: AppColors.textPrimary.withValues(alpha: 0.7)),
-          cell(2, 3, color: AppColors.textMuted),
+          cell(2, 4, color: AppColors.textMuted),
           cell(3, 2, align: TextAlign.center),
-          cell(4, 5,
-              color: AppColors.textPrimary.withValues(alpha: 0.4),
-              align: TextAlign.right),
         ],
+      ),
+    );
+  }
+
+  void _showExplainerReal(BuildContext context, Map<String, dynamic> p, String? moonNakshatra) {
+    final planet = p['planet'] as String;
+    final sign = p['sign'] as String;
+    final house = p['house'] as int?;
+    final retro = p['retrograde'] as bool;
+    final buffer = StringBuffer('$planet is placed in $sign');
+    if (house != null) buffer.write(', house $house');
+    buffer.write('.');
+    if (moonNakshatra != null) buffer.write(' Moon Nakshatra: $moonNakshatra.');
+    if (retro) buffer.write(' Currently retrograde.');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: GlassCard(
+          fill: AppColors.navBarBase,
+          fillOpacity: 0.96,
+          goldTopBorder: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(planet,
+                      style:
+                          AppText.serif(size: 22, color: AppColors.textPrimary)),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('in $sign',
+                      style: AppText.sans(size: 14, color: AppColors.gold)),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '${_formatDeg(p['degreeInSign'] as double)}${house != null ? ' · House $house' : ''}',
+                style: AppText.sans(size: 12, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(buffer.toString(),
+                  style: AppText.sans(
+                      size: 14, color: AppColors.textCream, height: 1.5)),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -291,10 +481,105 @@ class _PlanetTab extends StatelessWidget {
 // 2) Vimshottari Dasha tab — current period card + link to the full timeline
 // ─────────────────────────────────────────────────────────────────────────────
 class _DashaTab extends StatelessWidget {
-  const _DashaTab();
+  const _DashaTab({this.dasha});
+
+  final Map<String, dynamic>? dasha;
 
   @override
   Widget build(BuildContext context) {
+    if (dasha == null) return _mock(context);
+
+    final maha = _currentOf(dasha!['maha'] as List<dynamic>);
+    final antar = _currentOf(dasha!['antar'] as List<dynamic>);
+    if (maha == null) return _mock(context);
+
+    final mahaStart = _parseUtc(maha['start'] as String);
+    final mahaEnd = _parseUtc(maha['end'] as String);
+    final mahaLord = maha['lord'] as String;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Vimshottari Dasha',
+            style: AppText.serif(size: 22, color: AppColors.textPrimary)),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'The planetary period you are living through now.',
+          style: AppText.sans(size: 13, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        GlassCard(
+          goldTopBorder: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconChip(
+                    glow: true,
+                    child: const Icon(Icons.auto_awesome,
+                        size: 18, color: AppColors.gold),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$mahaLord Mahadasha',
+                            style: AppText.serif(size: 18, weight: FontWeight.w600)),
+                        Text('ENDS ${_monthYear(mahaEnd)}',
+                            style: AppText.sans(
+                                size: 10,
+                                color: AppColors.textMuted,
+                                letterSpacing: 0.8)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                '$mahaLord Mahadasha runs from ${_dateShort(mahaStart)} to ${_dateShort(mahaEnd)}.',
+                style: AppText.sans(
+                    size: 13, color: AppColors.textCream, height: 1.5),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              MeterBar(label: 'Mahadasha elapsed', value: _elapsedFraction(mahaStart, mahaEnd)),
+              if (antar != null) ...[
+                const SizedBox(height: AppSpacing.lg),
+                Container(height: 1, color: AppColors.borderFaint),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    const SectionLabel('Current Antardasha'),
+                    const Spacer(),
+                    Text(antar['lord'] as String,
+                        style: AppText.sans(size: 13, color: AppColors.gold)),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '${antar['lord']} Antardasha runs from ${_dateShort(_parseUtc(antar['start'] as String))} '
+                  'to ${_dateShort(_parseUtc(antar['end'] as String))}, within the $mahaLord Mahadasha.',
+                  style: AppText.sans(
+                      size: 13, color: AppColors.textMuted, height: 1.5),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        GoldButton(
+          label: 'VIEW FULL DASHA TIMELINE',
+          icon: Icons.timeline,
+          outlined: true,
+          onPressed: () => pushScreen(context, DashaTimelineScreen.new),
+        ),
+      ],
+    );
+  }
+
+  Widget _mock(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -387,6 +672,7 @@ class _ChartsTab extends StatelessWidget {
     required this.southIndian,
     required this.onChartChanged,
     required this.onStyleChanged,
+    this.chart,
   });
 
   final KundliProfile profile;
@@ -394,6 +680,7 @@ class _ChartsTab extends StatelessWidget {
   final bool southIndian;
   final ValueChanged<int> onChartChanged;
   final ValueChanged<bool> onStyleChanged;
+  final Map<String, dynamic>? chart;
 
   static const _tabs = ['Rashi D1', 'Navamsha D9', 'Dashamsha D10', 'Shastiamsha D60'];
   static const _titles = [
@@ -412,9 +699,10 @@ class _ChartsTab extends StatelessWidget {
     'The finest divisional chart in the Parashari system — a detailed read '
         'of karma and overall life fortune.',
   ];
+  static const _jsonKeys = ['d1', 'd9', 'd10', 'd60'];
 
   // House (1..12) → planet abbreviations, relative to each varga's ascendant.
-  static const List<Map<int, String>> _houses = [
+  static const List<Map<int, String>> _mockHouses = [
     {1: 'As', 3: 'Ra', 4: 'Mo', 5: 'Ju', 7: 'Sa', 9: 'Ke', 10: 'Su\nMa', 11: 'Me\nVe'},
     {1: 'As\nJu', 2: 'Ra', 3: 'Ma', 5: 'Su\nMe', 7: 'Sa', 8: 'Ke', 9: 'Mo', 11: 'Ve'},
     {1: 'As', 2: 'Su', 4: 'Ra', 5: 'Mo\nMe', 6: 'Ma', 8: 'Ju', 10: 'Sa\nVe', 12: 'Ke'},
@@ -422,7 +710,7 @@ class _ChartsTab extends StatelessWidget {
   ];
 
   // Ascendant sign index per varga (0=Aries..11=Pisces) — for South layout only.
-  static const _ascendantSign = [4, 9, 0, 3]; // Leo, Capricorn, Aries, Cancer
+  static const _mockAscendantSign = [4, 9, 0, 3]; // Leo, Capricorn, Aries, Cancer
 
   static const _legend = [
     ['As', 'Ascendant'], ['Su', 'Sun'], ['Mo', 'Moon'], ['Ma', 'Mars'],
@@ -431,7 +719,11 @@ class _ChartsTab extends StatelessWidget {
   ];
 
   bool get _isD60 => chartIndex == 3;
-  bool get _d60Locked => _isD60 && profile.tobUnknown;
+
+  List<dynamic>? get _planets => chart == null ? null : chart![_jsonKeys[chartIndex]] as List<dynamic>;
+
+  bool get _d60Locked =>
+      chart == null ? (_isD60 && profile.tobUnknown) : (_isD60 && (chart!['d60'] as List).isEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -445,14 +737,20 @@ class _ChartsTab extends StatelessWidget {
               style: AppText.serif(size: 22, color: AppColors.textPrimary)),
         ),
         const SizedBox(height: AppSpacing.lg),
-        _styleToggle(),
-        const SizedBox(height: AppSpacing.lg),
-        if (_d60Locked) _lockedNotice() else _chartCard(),
+        if (chartIndex == 0) ...[_styleToggle(), const SizedBox(height: AppSpacing.lg)],
+        if (_d60Locked)
+          _lockedNotice()
+        else if (chart == null)
+          _mockChartCard()
+        else if (chartIndex == 0)
+          _realD1ChartCard()
+        else
+          _realVargaSignList(_planets!),
         const SizedBox(height: AppSpacing.lg),
         Text(_notes[chartIndex],
             textAlign: TextAlign.center,
             style: AppText.sans(size: 13, color: AppColors.textTan, height: 1.55)),
-        if (_isD60 && !profile.tobUnknown) ...[
+        if (_isD60 && !_d60Locked) ...[
           const SizedBox(height: AppSpacing.md),
           _sensitivityNote(),
         ],
@@ -514,7 +812,7 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  Widget _chartCard() {
+  Widget _mockChartCard() {
     return GlassCard(
       fill: AppColors.surfaceRaised,
       fillOpacity: 0.5,
@@ -524,9 +822,78 @@ class _ChartsTab extends StatelessWidget {
         aspectRatio: 1,
         child: CustomPaint(
           painter: southIndian
-              ? _SouthChartPainter(_houses[chartIndex], _ascendantSign[chartIndex])
-              : _NorthChartPainter(_houses[chartIndex]),
+              ? SouthChartPainter(_mockHouses[chartIndex], _mockAscendantSign[chartIndex])
+              : NorthChartPainter(_mockHouses[chartIndex]),
         ),
+      ),
+    );
+  }
+
+  // Real D1 has per-planet house numbers (from the natal ascendant), so it
+  // can be drawn in the same diamond/grid painters as the mock, just fed
+  // real placements instead of hardcoded ones.
+  Widget _realD1ChartCard() {
+    final ascendant = chart!['ascendant'] as Map<String, dynamic>;
+    final ascendantSignIndex = ascendant['signIndex'] as int;
+    final houses = housesFromD1(_planets!);
+    return GlassCard(
+      fill: AppColors.surfaceRaised,
+      fillOpacity: 0.5,
+      radius: AppRadius.md,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: CustomPaint(
+          painter: southIndian
+              ? SouthChartPainter(houses, ascendantSignIndex)
+              : NorthChartPainter(houses),
+        ),
+      ),
+    );
+  }
+
+  // D9/D10/D60 only carry each planet's sign (the backend doesn't compute a
+  // varga-Lagna house position), so — rather than guess at house placement —
+  // these are shown as a real sign table instead of the diamond chart.
+  Widget _realVargaSignList(List<dynamic> planets) {
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      radius: AppRadius.md,
+      child: Column(
+        children: [
+          for (int i = 0; i < planets.length; i++)
+            _vargaRow(planets[i] as Map<String, dynamic>, last: i == planets.length - 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _vargaRow(Map<String, dynamic> p, {required bool last}) {
+    final retro = p['retrograde'] as bool;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 13),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(bottom: BorderSide(color: AppColors.textPrimary.withValues(alpha: 0.05))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+              flex: 3,
+              child: Text(p['planet'] as String,
+                  style: AppText.sans(size: 13, color: AppColors.gold))),
+          Expanded(
+              flex: 4,
+              child: Text(p['sign'] as String,
+                  style: AppText.sans(size: 13, color: AppColors.textPrimary))),
+          Expanded(
+              flex: 3,
+              child: Text(
+                  '${_formatDeg(p['degreeInSign'] as double)}${retro ? ' R' : ''}',
+                  textAlign: TextAlign.right,
+                  style: AppText.sans(size: 13, color: AppColors.textMuted))),
+        ],
       ),
     );
   }
@@ -590,6 +957,24 @@ class _ChartsTab extends StatelessWidget {
   }
 
   Widget _vargottamaNote() {
+    List<String> vargottamaPlanets = const ['Jupiter', 'Venus']; // mock fallback
+    if (chart != null) {
+      final d1 = chart!['d1'] as List<dynamic>;
+      final d9 = chart!['d9'] as List<dynamic>;
+      vargottamaPlanets = [
+        for (final p1 in d1)
+          if (d9.any((p9) =>
+              (p9 as Map<String, dynamic>)['planet'] == (p1 as Map<String, dynamic>)['planet'] &&
+              p9['signIndex'] == p1['signIndex']))
+            p1['planet'] as String,
+      ];
+      if (vargottamaPlanets.isEmpty) return const SizedBox.shrink();
+    }
+
+    final list = vargottamaPlanets.length == 1
+        ? vargottamaPlanets.first
+        : '${vargottamaPlanets.sublist(0, vargottamaPlanets.length - 1).join(', ')} and ${vargottamaPlanets.last}';
+
     return GlassCard(
       radius: AppRadius.sm,
       fill: AppColors.gold,
@@ -603,9 +988,9 @@ class _ChartsTab extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              'Jupiter and Venus are Vargottama — placed in the same sign in '
-              'both the Rashi and Navamsha charts, which strengthens them '
-              'considerably.',
+              '$list ${vargottamaPlanets.length == 1 ? "is" : "are"} Vargottama — placed in '
+              'the same sign in both the Rashi and Navamsha charts, which strengthens '
+              '${vargottamaPlanets.length == 1 ? "it" : "them"} considerably.',
               style: AppText.sans(size: 12, color: AppColors.textTan, height: 1.4),
             ),
           ),
@@ -628,135 +1013,16 @@ class _ChartsTab extends StatelessWidget {
   }
 }
 
-/// Draws the North-Indian diamond (square + both diagonals + midpoint diamond)
-/// in thin gold lines, then seats planet labels at fixed house centers.
-class _NorthChartPainter extends CustomPainter {
-  const _NorthChartPainter(this.houses);
-
-  final Map<int, String> houses;
-
-  static const Map<int, Offset> _centers = {
-    1: Offset(0.50, 0.25), 2: Offset(0.25, 0.11), 3: Offset(0.11, 0.25),
-    4: Offset(0.25, 0.50), 5: Offset(0.11, 0.75), 6: Offset(0.25, 0.89),
-    7: Offset(0.50, 0.75), 8: Offset(0.75, 0.89), 9: Offset(0.89, 0.75),
-    10: Offset(0.75, 0.50), 11: Offset(0.89, 0.25), 12: Offset(0.75, 0.11),
-  };
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    final line = Paint()
-      ..color = AppColors.gold.withValues(alpha: 0.45)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1;
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), line);
-    canvas.drawLine(Offset.zero, Offset(w, h), line);
-    canvas.drawLine(Offset(w, 0), Offset(0, h), line);
-
-    final diamond = Path()
-      ..moveTo(w / 2, 0)
-      ..lineTo(w, h / 2)
-      ..lineTo(w / 2, h)
-      ..lineTo(0, h / 2)
-      ..close();
-    canvas.drawPath(diamond, line..color = AppColors.gold.withValues(alpha: 0.32));
-
-    houses.forEach((house, label) {
-      final c = _centers[house];
-      if (c == null) return;
-      final isAsc = label.startsWith('As');
-      final tp = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: AppText.sans(
-            size: 12,
-            weight: FontWeight.w600,
-            color: isAsc ? AppColors.gold : AppColors.textCream,
-            height: 1.15,
-          ),
-        ),
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: w * 0.26);
-      tp.paint(canvas, Offset(c.dx * w - tp.width / 2, c.dy * h - tp.height / 2));
-    });
-  }
-
-  @override
-  bool shouldRepaint(covariant _NorthChartPainter old) => old.houses != houses;
-}
-
-/// Draws the South-Indian fixed 4x4 grid — signs sit in fixed cells; each
-/// house's label is placed by converting house→sign via the ascendant.
-class _SouthChartPainter extends CustomPainter {
-  const _SouthChartPainter(this.houses, this.ascendantSign);
-
-  final Map<int, String> houses;
-  final int ascendantSign; // 0=Aries..11=Pisces
-
-  // Fixed sign → grid cell (row, col) in the 4x4 layout.
-  static const Map<int, (int, int)> _signCell = {
-    11: (0, 0), 0: (0, 1), 1: (0, 2), 2: (0, 3), // Pisces Aries Taurus Gemini
-    10: (1, 0), 3: (1, 3), // Aquarius .. Cancer
-    9: (2, 0), 4: (2, 3), // Capricorn .. Leo
-    8: (3, 0), 7: (3, 1), 6: (3, 2), 5: (3, 3), // Sag Scorpio Libra Virgo
-  };
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width;
-    final cell = s / 4;
-    final line = Paint()
-      ..color = AppColors.gold.withValues(alpha: 0.4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1;
-
-    canvas.drawRect(Rect.fromLTWH(0, 0, s, s), line);
-    for (int i = 1; i < 4; i++) {
-      canvas.drawLine(Offset(cell * i, 0), Offset(cell * i, s), line);
-      canvas.drawLine(Offset(0, cell * i), Offset(s, cell * i), line);
-    }
-    // clear the inner 2x2 (not part of a South Indian chart)
-    final wipe = Paint()..color = AppColors.surfaceRaised.withValues(alpha: 1);
-    canvas.drawRect(Rect.fromLTWH(cell, cell, cell * 2, cell * 2), wipe);
-
-    houses.forEach((house, label) {
-      final sign = (ascendantSign + house - 1) % 12;
-      final rc = _signCell[sign];
-      if (rc == null) return;
-      final center = Offset((rc.$2 + 0.5) * cell, (rc.$1 + 0.5) * cell);
-      final isAsc = label.startsWith('As');
-      final tp = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: AppText.sans(
-            size: 11,
-            weight: FontWeight.w600,
-            color: isAsc ? AppColors.gold : AppColors.textCream,
-            height: 1.15,
-          ),
-        ),
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: cell * 0.85);
-      tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
-    });
-  }
-
-  @override
-  bool shouldRepaint(covariant _SouthChartPainter old) =>
-      old.houses != houses || old.ascendantSign != ascendantSign;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// 4) KP System tab — sub-lord table + live ruling planets
+// 4) KP System tab — cuspal sub-lord table
 // ─────────────────────────────────────────────────────────────────────────────
 class _KpTab extends StatelessWidget {
-  const _KpTab();
+  const _KpTab({this.chart});
+
+  final Map<String, dynamic>? chart;
 
   // House, Sign, Star (Nakshatra) Lord, Sub Lord.
-  static const _rows = <List<String>>[
+  static const _mockRows = <List<String>>[
     ['1', 'Leo', 'Sun', 'Venus'], ['2', 'Virgo', 'Mercury', 'Saturn'],
     ['3', 'Libra', 'Venus', 'Mercury'], ['4', 'Scorpio', 'Ketu', 'Mars'],
     ['5', 'Sagittarius', 'Jupiter', 'Rahu'], ['6', 'Capricorn', 'Saturn', 'Sun'],
@@ -767,6 +1033,9 @@ class _KpTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cusps = chart == null ? null : chart!['cusps'] as List<dynamic>;
+    final locked = chart != null && cusps!.isEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -778,43 +1047,64 @@ class _KpTab extends StatelessWidget {
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
         ),
         const SizedBox(height: AppSpacing.lg),
-        GlassCard(
-          goldTopBorder: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionLabel('RULING PLANETS · RIGHT NOW'),
-              const SizedBox(height: AppSpacing.lg),
-              Wrap(
-                spacing: AppSpacing.lg,
-                runSpacing: AppSpacing.md,
-                children: const [
-                  _RulingChip('Lagna Lord', 'Sun'),
-                  _RulingChip('Moon Sign Lord', 'Venus'),
-                  _RulingChip('Day Lord', 'Saturn'),
-                  _RulingChip('Star Lord', 'Mercury'),
-                  _RulingChip('Sub Lord', 'Rahu'),
-                ],
-              ),
-            ],
+        if (locked)
+          _lockedNotice()
+        else ...[
+          const SectionLabel('CUSPAL SUB-LORDS'),
+          const SizedBox(height: AppSpacing.md),
+          GlassCard(
+            padding: EdgeInsets.zero,
+            radius: AppRadius.md,
+            child: Column(
+              children: [
+                _row(const ['HOUSE', 'SIGN', 'STAR LORD', 'SUB LORD'], isHeader: true),
+                if (cusps != null)
+                  for (int i = 0; i < cusps.length; i++)
+                    _rowReal(cusps[i] as Map<String, dynamic>, last: i == cusps.length - 1)
+                else
+                  for (int i = 0; i < _mockRows.length; i++)
+                    _row(_mockRows[i], last: i == _mockRows.length - 1),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        const SectionLabel('CUSPAL SUB-LORDS'),
-        const SizedBox(height: AppSpacing.md),
-        GlassCard(
-          padding: EdgeInsets.zero,
-          radius: AppRadius.md,
-          child: Column(
-            children: [
-              _row(const ['HOUSE', 'SIGN', 'STAR LORD', 'SUB LORD'], isHeader: true),
-              for (int i = 0; i < _rows.length; i++)
-                _row(_rows[i], last: i == _rows.length - 1),
-            ],
-          ),
-        ),
+        ],
       ],
     );
+  }
+
+  Widget _lockedNotice() {
+    return GlassCard(
+      fill: AppColors.critical,
+      fillOpacity: 0.12,
+      borderColor: AppColors.criticalText.withValues(alpha: 0.4),
+      radius: AppRadius.md,
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      child: Column(
+        children: [
+          const Icon(Icons.lock_outline, size: 32, color: AppColors.criticalText),
+          const SizedBox(height: AppSpacing.md),
+          Text('Requires exact birth time',
+              style: AppText.serif(size: 16, color: AppColors.textPrimary)),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'KP sub-lords depend on the Placidus house cusps, which need a birth '
+            'time exact to the minute.',
+            textAlign: TextAlign.center,
+            style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowReal(Map<String, dynamic> c, {required bool last}) {
+    final lordship = c['lordship'] as Map<String, dynamic>;
+    return _row([
+      '${c['house']}',
+      c['sign'] as String,
+      lordship['starLord'] as String,
+      lordship['subLord'] as String,
+    ], last: last);
   }
 
   Widget _row(List<String> cells, {bool isHeader = false, bool last = false}) {
@@ -852,42 +1142,16 @@ class _KpTab extends StatelessWidget {
   }
 }
 
-class _RulingChip extends StatelessWidget {
-  const _RulingChip(this.label, this.value);
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-        border: Border.all(color: AppColors.borderSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label.toUpperCase(),
-              style: AppText.sans(size: 9, color: AppColors.textMuted, letterSpacing: 0.6)),
-          const SizedBox(height: 2),
-          Text(value, style: AppText.sans(size: 13, weight: FontWeight.w600, color: AppColors.gold)),
-        ],
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 5) Cusp Chart tab — precise cusp degree + planets at each of the 12 houses
 // ─────────────────────────────────────────────────────────────────────────────
 class _CuspTab extends StatelessWidget {
-  const _CuspTab();
+  const _CuspTab({this.chart});
+
+  final Map<String, dynamic>? chart;
 
   // House, Cusp degree, Sign, Planets at cusp (— if none).
-  static const _rows = <List<String>>[
+  static const _mockRows = <List<String>>[
     ['1', "12°44'", 'Leo', '—'], ['2', "09°10'", 'Virgo', '—'],
     ['3', "07°55'", 'Libra', 'Rahu'], ['4', "10°02'", 'Scorpio', 'Saturn'],
     ['5', "14°38'", 'Sagittarius', '—'], ['6', "16°21'", 'Capricorn', 'Mars'],
@@ -899,6 +1163,9 @@ class _CuspTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cusps = chart == null ? null : chart!['cusps'] as List<dynamic>;
+    final locked = chart != null && cusps!.isEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -910,19 +1177,60 @@ class _CuspTab extends StatelessWidget {
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
         ),
         const SizedBox(height: AppSpacing.lg),
-        GlassCard(
-          padding: EdgeInsets.zero,
-          radius: AppRadius.md,
-          child: Column(
-            children: [
-              _row(const ['H', 'CUSP', 'SIGN', 'PLANETS'], isHeader: true),
-              for (int i = 0; i < _rows.length; i++)
-                _row(_rows[i], last: i == _rows.length - 1),
-            ],
+        if (locked)
+          _lockedNotice()
+        else
+          GlassCard(
+            padding: EdgeInsets.zero,
+            radius: AppRadius.md,
+            child: Column(
+              children: [
+                _row(const ['H', 'CUSP', 'SIGN', 'PLANETS'], isHeader: true),
+                if (cusps != null)
+                  for (int i = 0; i < cusps.length; i++)
+                    _rowReal(cusps[i] as Map<String, dynamic>, last: i == cusps.length - 1)
+                else
+                  for (int i = 0; i < _mockRows.length; i++)
+                    _row(_mockRows[i], last: i == _mockRows.length - 1),
+              ],
+            ),
           ),
-        ),
       ],
     );
+  }
+
+  Widget _lockedNotice() {
+    return GlassCard(
+      fill: AppColors.critical,
+      fillOpacity: 0.12,
+      borderColor: AppColors.criticalText.withValues(alpha: 0.4),
+      radius: AppRadius.md,
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      child: Column(
+        children: [
+          const Icon(Icons.lock_outline, size: 32, color: AppColors.criticalText),
+          const SizedBox(height: AppSpacing.md),
+          Text('Requires exact birth time',
+              style: AppText.serif(size: 16, color: AppColors.textPrimary)),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'House cusps need a birth time exact to the minute.',
+            textAlign: TextAlign.center,
+            style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowReal(Map<String, dynamic> c, {required bool last}) {
+    final planets = (c['planets'] as List<dynamic>).cast<String>();
+    return _row([
+      '${c['house']}',
+      _formatDeg(c['degreeInSign'] as double),
+      c['sign'] as String,
+      planets.isEmpty ? '—' : planets.join(', '),
+    ], last: last);
   }
 
   Widget _row(List<String> cells, {bool isHeader = false, bool last = false}) {

@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using TrafficJam.Api.Data;
 using TrafficJam.Api.Modules.Auth;
 using TrafficJam.Api.Modules.Consultation;
+using TrafficJam.Api.Modules.Users;
 using Xunit;
 
 namespace TrafficJam.Api.Tests;
@@ -80,6 +85,61 @@ public class ConsultationEndpointsTests : IClassFixture<TrafficJamApiFactory>, I
         Assert.Single(thread!);
         Assert.Equal("user", thread![0].Sender);
         Assert.Equal("Any update?", thread[0].Text);
+    }
+
+    [Fact]
+    public async Task AskQuestion_WithoutBirthDataSaved_StoresEmptyContext()
+    {
+        var client = await AuthedClientAsync("uid-ask-nocontext");
+        var asked = await (await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("career", "Will I get promoted?", "standard")))
+            .Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var question = await db.Questions.SingleAsync(q => q.Id == asked!.QuestionId);
+
+        Assert.Equal("{}", question.ContextJson);
+    }
+
+    // Regression test for BACKEND_REQUIREMENTS.md's Ask Jay spec: "the backend
+    // joins the user's chart + current Dasha + active transits + today's
+    // Panchang into the question record before routing to an astrologer."
+    [Fact]
+    public async Task AskQuestion_WithBirthDataSaved_JoinsChartDashaTransitsAndPanchangIntoContext()
+    {
+        var client = await AuthedClientAsync("uid-ask-context");
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Context Test", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+
+        var asked = await (await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("career", "Will I get promoted?", "standard")))
+            .Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var question = await db.Questions.SingleAsync(q => q.Id == asked!.QuestionId);
+        var context = JsonSerializer.Deserialize<JsonElement>(question.ContextJson);
+
+        var chart = context.GetProperty("chart");
+        Assert.True(chart.TryGetProperty("sunSign", out _));
+        Assert.True(chart.TryGetProperty("moonSign", out _));
+        Assert.True(chart.TryGetProperty("nakshatra", out _));
+
+        var dasha = context.GetProperty("dasha");
+        Assert.True(dasha.TryGetProperty("maha", out var maha) && maha.GetString()!.Length > 0);
+        Assert.True(dasha.TryGetProperty("antar", out _));
+
+        var panchang = context.GetProperty("panchang");
+        Assert.True(panchang.TryGetProperty("tithi", out _));
+        Assert.True(panchang.TryGetProperty("nakshatra", out _));
+
+        var transits = context.GetProperty("transits");
+        Assert.True(transits.GetArrayLength() > 0);
+        var firstTransit = transits.EnumerateArray().First();
+        Assert.True(firstTransit.TryGetProperty("planet", out _));
+        Assert.True(firstTransit.TryGetProperty("houseFromMoon", out _));
     }
 
     [Fact]

@@ -83,7 +83,6 @@ const List<NavGroup> kNavGroups = [
     NavDest('Planet Strengths', Icons.bar_chart, PlanetStrengthsScreen.new),
   ]),
   NavGroup('Ask Jay', [
-    NavDest('Chat with Jay', Icons.chat_bubble_outline, AskChatScreen.new),
     NavDest('My Questions', Icons.history, MyQuestionsScreen.new),
   ]),
   NavGroup('Remedies', [
@@ -132,6 +131,16 @@ void goToShell(BuildContext context) {
   );
 }
 
+/// Jump into the main shell on the Ask Jay tab (clears the stack) — used by
+/// "Ask Jay" CTAs on other screens, since composing a question needs the
+/// full Ask Jay form, not a specific chat thread.
+void goToAskJayTab(BuildContext context) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const AppShell(initialIndex: 3)),
+    (route) => false,
+  );
+}
+
 /// Return to the login screen, clearing the stack (log out).
 void goToLogin(BuildContext context) {
   unawaited(AuthService.logout());
@@ -157,7 +166,9 @@ void goToNotificationPrefs(BuildContext c) => pushScreen(c, NotificationPrefsScr
 void goToSubscription(BuildContext c) => pushScreen(c, SubscriptionScreen.new);
 void goToNotifications(BuildContext c) => pushScreen(c, NotificationsScreen.new);
 // Ask Jay
-void goToChat(BuildContext c) => pushScreen(c, AskChatScreen.new);
+void goToChat(BuildContext c, {required String questionId}) =>
+    Navigator.of(c).push(MaterialPageRoute(
+        builder: (_) => AskChatScreen(questionId: questionId)));
 void goToMyQuestions(BuildContext c) => pushScreen(c, MyQuestionsScreen.new);
 // My Chart sub-views
 void goToKundli(BuildContext c) => pushScreen(c, KundliLandingScreen.new);

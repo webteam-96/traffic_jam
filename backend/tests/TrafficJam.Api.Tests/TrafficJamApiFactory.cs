@@ -72,4 +72,32 @@ public class TrafficJamApiFactory : WebApplicationFactory<Program>
             _initLock.Release();
         }
     }
+
+    /// <summary>
+    /// Drops this instance's uniquely-named test database. Without this,
+    /// every test run leaves its trafficjam_test_&lt;guid&gt; schema behind
+    /// permanently — harmless to correctness (each run gets its own fresh
+    /// name) but an ever-growing pile of dead databases on the dev MySQL
+    /// instance. Deliberately a raw connection to the server rather than
+    /// going through <see cref="Services"/> or a real AppDbContext — by the
+    /// time a fixture's Dispose runs the app host's own service provider may
+    /// already be torn down (observed as ObjectDisposedException when this
+    /// first went through Services.CreateScope()), and AppDbContext itself
+    /// needs an IEncryptionService that has nothing to do with dropping a
+    /// schema, so this sidesteps both instead of fighting the app's lifecycle.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _initialized)
+        {
+            using var connection = new MySqlConnector.MySqlConnection(
+                "Server=localhost;Port=3307;User=root;Password=devpassword;");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"DROP DATABASE IF EXISTS `{_databaseName}`;";
+            command.ExecuteNonQuery();
+        }
+
+        base.Dispose(disposing);
+    }
 }

@@ -1,50 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
+import 'package:traffic_jam/services/consult_api.dart';
+import 'package:traffic_jam/nav.dart';
 
 /// PUSHED screen — history of questions the user asked Jay.
-/// Static list; no interactivity required, so StatelessWidget. (ponytail)
-class MyQuestionsScreen extends StatelessWidget {
+/// Wired to GET /consult/questions.
+class MyQuestionsScreen extends StatefulWidget {
   const MyQuestionsScreen({super.key});
 
-  // Mock history — inline const, no backend.
-  static const List<({String q, String cat, bool answered, String time})>
-      _items = [
-    (
-      q: 'Will this be a good year to switch jobs, or should I hold my current role a while longer?',
-      cat: 'Career',
-      answered: true,
-      time: '2h ago',
-    ),
-    (
-      q: 'Is it a favourable time to invest in property before the next lunar cycle?',
-      cat: 'Finance',
-      answered: true,
-      time: 'Yesterday',
-    ),
-    (
-      q: 'What remedies help with the recurring health issues in my sixth house?',
-      cat: 'Health',
-      answered: false,
-      time: '2 days ago',
-    ),
-    (
-      q: 'Should I start my new business venture during the upcoming Jupiter transit?',
-      cat: 'Career',
-      answered: true,
-      time: 'Last week',
-    ),
-    (
-      q: 'When will my financial situation stabilise according to my current dasha?',
-      cat: 'Finance',
-      answered: false,
-      time: 'Last week',
-    ),
-  ];
+  @override
+  State<MyQuestionsScreen> createState() => _MyQuestionsScreenState();
+}
+
+class _MyQuestionsScreenState extends State<MyQuestionsScreen> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+  bool _errored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final items = await ConsultApi.getQuestions();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final answered = _items.where((e) => e.answered).length;
+    if (_loading) {
+      return const DetailScaffold(
+        title: 'My Questions',
+        scrollable: false,
+        child: Center(
+          child: CircularProgressIndicator(
+              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+        ),
+      );
+    }
+
+    if (_errored) {
+      return DetailScaffold(
+        title: 'My Questions',
+        scrollable: false,
+        child: Center(
+          child: Text("Couldn't load your questions — check your connection.",
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
+    final answered = _items.where((e) => e['status'] == 'answered').length;
     return DetailScaffold(
       title: 'My Questions',
       child: Column(
@@ -57,10 +78,23 @@ class MyQuestionsScreen extends StatelessWidget {
             style: AppText.body,
           ),
           const SizedBox(height: AppSpacing.xl),
-          for (final item in _items) ...[
-            _QuestionCard(item: item),
-            const SizedBox(height: AppSpacing.md),
-          ],
+          if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              child: Center(
+                child: Text("You haven't asked Jay anything yet.",
+                    style: AppText.body),
+              ),
+            )
+          else
+            for (final item in _items) ...[
+              _QuestionCard(
+                item: item,
+                onTap: () =>
+                    goToChat(context, questionId: item['id'] as String),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
         ],
       ),
     );
@@ -68,35 +102,59 @@ class MyQuestionsScreen extends StatelessWidget {
 }
 
 class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.item});
-  final ({String q, String cat, bool answered, String time}) item;
+  const _QuestionCard({required this.item, required this.onTap});
+  final Map<String, dynamic> item;
+  final VoidCallback onTap;
 
   static const _catIcons = {
     'Career': Icons.work_outline,
     'Finance': Icons.savings_outlined,
     'Health': Icons.favorite_border,
+    'Relationship': Icons.favorite_border,
+    'Business': Icons.business_center_outlined,
   };
+
+  static String _relativeTime(String iso) {
+    final raw = DateTime.tryParse(iso);
+    if (raw == null) return '';
+    // The backend always sends UTC wall-clock values, but a round-trip
+    // through MySQL/EF Core loses the DateTimeKind, so some timestamps
+    // arrive without a trailing 'Z' and Dart misreads them as local time.
+    // Reinterpret the literal components as UTC regardless, then convert.
+    final utc = raw.isUtc
+        ? raw
+        : DateTime.utc(raw.year, raw.month, raw.day, raw.hour, raw.minute,
+            raw.second, raw.millisecond, raw.microsecond);
+    final dt = utc.toLocal();
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cat = item['domain'] as String? ?? 'Career';
+    final answered = item['status'] == 'answered';
     return GlassCard(
+      onTap: onTap,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              _CategoryChip(
-                label: item.cat,
-                icon: _catIcons[item.cat] ?? Icons.help_outline,
-              ),
+              _CategoryChip(label: cat, icon: _catIcons[cat] ?? Icons.help_outline),
               const Spacer(),
-              _StatusChip(answered: item.answered),
+              _StatusChip(answered: answered),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            item.q,
+            item['question'] as String? ?? '',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: AppText.serif(
@@ -110,7 +168,8 @@ class _QuestionCard extends StatelessWidget {
             children: [
               const Icon(Icons.schedule, size: 13, color: AppColors.textMuted),
               const SizedBox(width: AppSpacing.xs),
-              Text(item.time, style: AppText.bodySmall),
+              Text(_relativeTime(item['createdAt'] as String? ?? ''),
+                  style: AppText.bodySmall),
             ],
           ),
         ],

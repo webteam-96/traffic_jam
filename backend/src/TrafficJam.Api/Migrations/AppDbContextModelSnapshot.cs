@@ -328,42 +328,76 @@ namespace TrafficJam.Api.Migrations
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
 
-                    b.Property<TimeOnly>("AbhijitEnd")
-                        .HasColumnType("time(6)");
+                    b.Property<DateTime>("AbhijitEnd")
+                        .HasColumnType("datetime(6)");
 
-                    b.Property<TimeOnly>("AbhijitStart")
-                        .HasColumnType("time(6)");
+                    b.Property<DateTime>("AbhijitStart")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("GulikaKaalEnd")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("GulikaKaalStart")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Karana")
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime>("KaranaEndsAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("Moonrise")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("Moonset")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Nakshatra")
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<TimeOnly>("RahuKaalEnd")
-                        .HasColumnType("time(6)");
+                    b.Property<DateTime>("NakshatraEndsAt")
+                        .HasColumnType("datetime(6)");
 
-                    b.Property<TimeOnly>("RahuKaalStart")
-                        .HasColumnType("time(6)");
+                    b.Property<string>("Paksha")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
-                    b.Property<TimeOnly>("Sunrise")
-                        .HasColumnType("time(6)");
+                    b.Property<DateTime>("RahuKaalEnd")
+                        .HasColumnType("datetime(6)");
 
-                    b.Property<TimeOnly>("Sunset")
-                        .HasColumnType("time(6)");
+                    b.Property<DateTime>("RahuKaalStart")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("Sunrise")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("Sunset")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Tithi")
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime>("TithiEndsAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("YamagandaKaalEnd")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("YamagandaKaalStart")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Yoga")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime>("YogaEndsAt")
+                        .HasColumnType("datetime(6)");
 
                     b.HasKey("City", "Date");
 

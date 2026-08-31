@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Data.Entities;
 using TrafficJam.Api.Infrastructure;
+using TrafficJam.Api.Modules.Astro;
 
 namespace TrafficJam.Api.Modules.Users;
 
@@ -43,7 +45,9 @@ public static class UserEndpoints
         });
 
         me.MapPut("/birth-data", async (
-            BirthDataRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+            BirthDataRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
+            IAstroEngineService astroEngine, IDashaService dashaService, IKpService kpService,
+            IConnectionMultiplexer redis, CancellationToken ct) =>
         {
             var userId = principal.UserId();
             var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
@@ -76,9 +80,26 @@ public static class UserEndpoints
                 existing.UpdatedAt = DateTime.UtcNow;
             }
 
-            // TODO(astro-engine): once the Swiss Ephemeris integration exists, saving
-            // new birth data must invalidate + regenerate the stored Chart/Dasha here
-            // (BACKEND_REQUIREMENTS.md — Edit Birth Data is "Heavy (regenerate)").
+            // Saving birth data invalidates and regenerates the stored chart
+            // and Dasha (BACKEND_REQUIREMENTS.md — Edit Birth Data is "Heavy
+            // (regenerate)"). The Dasha table's `ValidMonth` is also meant to
+            // be refreshed by a monthly scheduled job for users who don't
+            // touch their birth data — that cron job isn't built yet, so
+            // today Dasha only advances when birth data is re-saved.
+            await RegenerateChartAndDashaAsync(db, userId, request.Dob, request.Tob, request.UnknownTime,
+                request.Lat, request.Lng, request.Timezone, astroEngine, dashaService, kpService, ct);
+
+            // Everything cached downstream of the natal chart (transits'
+            // house-from-Moon/Lagna, and the Traffic Signal score, which
+            // folds Dasha into its own breakdown) is now wrong too and must
+            // be invalidated — found live during end-to-end testing: editing
+            // birth data left GET /signal/today and /transits/today silently
+            // returning a stale cache computed from the OLD birth data, with
+            // no error and no indication anything was wrong. Panchang is
+            // deliberately NOT touched here — it's cached per city+date, not
+            // per user, so it was never wrong in the first place.
+            db.DailySignals.RemoveRange(db.DailySignals.Where(s => s.UserId == userId));
+            await InvalidateTransitCacheAsync(redis, userId);
 
             // The onboarding draft (if any) is superseded once real birth data is saved.
             var draft = await db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == userId, ct);
@@ -163,5 +184,129 @@ public static class UserEndpoints
 
             return Results.Ok();
         });
+    }
+
+    /// <summary>
+    /// Computes the birth chart (D1/D9/D10/D60, KP/Cusp) via
+    /// <see cref="IAstroEngineService"/> and <see cref="IKpService"/>, and
+    /// the Vimshottari Dasha via <see cref="IDashaService"/>, and upserts
+    /// all of it. D60 and KP/Cusp are stored as "[]" specifically when the
+    /// birth time is unknown — see AstroEngineService's and KpService's doc
+    /// comments for why those two need a genuinely exact time.
+    /// </summary>
+    private static async Task RegenerateChartAndDashaAsync(
+        AppDbContext db, Guid userId, DateOnly dob, TimeOnly? tob, bool unknownTime,
+        double lat, double lng, string timezone, IAstroEngineService astroEngine, IDashaService dashaService,
+        IKpService kpService, CancellationToken ct)
+    {
+        var timeKnown = !unknownTime && tob is not null;
+        var localDateTime = dob.ToDateTime(tob ?? new TimeOnly(12, 0));
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        var birthUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
+
+        var result = astroEngine.ComputeBirthChart(birthUtc, lat, lng, timeKnown);
+
+        var chart = await db.Charts.SingleOrDefaultAsync(c => c.UserId == userId, ct);
+        if (chart is null)
+        {
+            chart = new Chart
+            {
+                UserId = userId,
+                D1Json = "", D9Json = "", D10Json = "[]", D60Json = "[]",
+                MoonJson = "", KpJson = "[]", CuspJson = "[]",
+                Nakshatra = "", Ayanamsa = "",
+            };
+            db.Charts.Add(chart);
+        }
+
+        chart.D1Json = JsonSerializer.Serialize(new
+        {
+            ascendant = new
+            {
+                tropicalLongitude = result.AscendantTropicalLongitude,
+                siderealLongitude = result.AscendantSiderealLongitude,
+                signIndex = result.AscendantSignIndex,
+                sign = timeKnown ? VedicMath.SignNames[result.AscendantSignIndex] : null,
+                known = timeKnown,
+            },
+            planets = result.D1,
+        }, JsonConventions.CamelCase);
+        chart.D9Json = JsonSerializer.Serialize(result.D9, JsonConventions.CamelCase);
+        chart.D10Json = JsonSerializer.Serialize(result.D10, JsonConventions.CamelCase);
+        // D60 needs a genuinely exact birth time (see AstroEngineService's doc
+        // comment) — "[]" here means "not available for this profile", the
+        // same not-yet-computed convention used before this chart existed,
+        // not a claim that the D60 chart is empty.
+        chart.D60Json = result.D60 is null ? "[]" : JsonSerializer.Serialize(result.D60, JsonConventions.CamelCase);
+        chart.MoonJson = JsonSerializer.Serialize(result.MoonChart, JsonConventions.CamelCase);
+
+        // KP System / Cusp Chart need Placidus house cusps, which — like
+        // D60 — are only meaningful with a genuinely exact birth time (more
+        // so, in fact: there is no Placidus chart at all without one).
+        if (timeKnown)
+        {
+            var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), lat, lng, result.D1);
+            chart.KpJson = JsonSerializer.Serialize(kpChart.Planets, JsonConventions.CamelCase);
+            chart.CuspJson = JsonSerializer.Serialize(kpChart.Cusps, JsonConventions.CamelCase);
+        }
+        else
+        {
+            chart.KpJson = "[]";
+            chart.CuspJson = "[]";
+        }
+
+        chart.Nakshatra = $"{result.MoonNakshatra.Name}-{result.MoonNakshatra.Pada}";
+        chart.Ayanamsa = result.AyanamsaDegrees.ToString("F4");
+        chart.ComputedAt = DateTime.UtcNow;
+
+        var moonPosition = result.D1.Single(p => p.Planet == "Moon");
+        var moonSiderealLongitude = moonPosition.SignIndex * 30.0 + moonPosition.DegreeInSign;
+        var asOfUtc = DateTime.UtcNow;
+        var dashaResult = dashaService.Compute(birthUtc, moonSiderealLongitude, asOfUtc);
+
+        var dasha = await db.Dashas.SingleOrDefaultAsync(d => d.UserId == userId, ct);
+        if (dasha is null)
+        {
+            dasha = new Dasha
+            {
+                UserId = userId, MahaJson = "", AntarJson = "", PratyantarJson = "",
+                ValidMonth = new DateOnly(asOfUtc.Year, asOfUtc.Month, 1),
+            };
+            db.Dashas.Add(dasha);
+        }
+
+        dasha.MahaJson = SerializeDashaPeriods(dashaResult.MahaTimeline, dashaResult.CurrentMaha, asOfUtc);
+        dasha.AntarJson = SerializeDashaPeriods(dashaResult.CurrentAntarList, dashaResult.CurrentAntar, asOfUtc);
+        dasha.PratyantarJson = SerializeDashaPeriods(dashaResult.CurrentPratyantarList, null, asOfUtc);
+        dasha.ValidMonth = new DateOnly(asOfUtc.Year, asOfUtc.Month, 1);
+    }
+
+    private static string SerializeDashaPeriods(
+        IReadOnlyList<DashaPeriod> periods, DashaPeriod? current, DateTime asOfUtc) =>
+        JsonSerializer.Serialize(periods.Select(p => new
+        {
+            lord = p.Lord,
+            start = p.Start,
+            end = p.End,
+            current = ReferenceEquals(p, current) || (asOfUtc >= p.Start && asOfUtc < p.End),
+        }), JsonConventions.CamelCase);
+
+    /// <summary>
+    /// Deletes every cached `transits:{userId}:*` Redis key (TransitEndpoints'
+    /// cache — see its doc comment) for this user, regardless of which date
+    /// each was cached for. A birth-data edit invalidates transit data for
+    /// every date, not just today, so this doesn't limit itself to today's key.
+    /// </summary>
+    private static async Task InvalidateTransitCacheAsync(IConnectionMultiplexer redis, Guid userId)
+    {
+        var db = redis.GetDatabase();
+        foreach (var endpoint in redis.GetEndPoints())
+        {
+            var server = redis.GetServer(endpoint);
+            await foreach (var key in server.KeysAsync(pattern: $"transits:{userId}:*"))
+            {
+                await db.KeyDeleteAsync(key);
+            }
+        }
     }
 }

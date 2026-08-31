@@ -318,7 +318,6 @@ class _LoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
-      showBack: false,
       scrollable: false,
       child: Center(
         child: Column(

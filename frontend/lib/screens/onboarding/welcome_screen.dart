@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/models/onboarding_data.dart';
 
 /// Onboarding welcome — introduces the Traffic Signal metaphor.
 class WelcomeScreen extends StatelessWidget {
@@ -17,7 +18,6 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
-      showBack: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -40,7 +40,10 @@ class WelcomeScreen extends StatelessWidget {
           GoldButton(
             label: 'DISCOVER YOUR DAY',
             icon: Icons.auto_awesome,
-            onPressed: () => goToIdentity(context),
+            onPressed: () {
+              OnboardingData.reset();
+              goToIdentity(context);
+            },
           ),
           const SizedBox(height: AppSpacing.md),
         ],

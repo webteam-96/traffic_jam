@@ -8,6 +8,7 @@ using TrafficJam.Api.Modules.Auth;
 using TrafficJam.Api.Modules.Users;
 using TrafficJam.Api.Modules.Notifications;
 using TrafficJam.Api.Modules.Consultation;
+using TrafficJam.Api.Modules.Astro;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,17 +16,27 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<IEncryptionService, AesEncryptionService>();
 
-var mysqlConnectionString = builder.Configuration.GetConnectionString("MySql")
-    ?? throw new InvalidOperationException("ConnectionStrings:MySql is not configured.");
+// Resolved lazily from the DI-provided IConfiguration (not builder.Configuration
+// read here at top level) so that config overrides applied by test hosts —
+// WebApplicationFactory's ConfigureAppConfiguration only composes into the
+// final IConfiguration during builder.Build(), not into this early reference —
+// are actually picked up. Reading builder.Configuration directly at this point
+// in the file previously meant TrafficJamApiFactory's per-test-run database
+// name override was silently ignored and every test run hit the real dev
+// MySQL database instead of its own trafficjam_test_<guid> schema.
+builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
+{
+    var connectionString = serviceProvider.GetRequiredService<IConfiguration>().GetConnectionString("MySql")
+        ?? throw new InvalidOperationException("ConnectionStrings:MySql is not configured.");
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+});
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(mysqlConnectionString, ServerVersion.AutoDetect(mysqlConnectionString)));
-
-var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
-    ?? throw new InvalidOperationException("ConnectionStrings:Redis is not configured.");
-
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    _ => ConnectionMultiplexer.Connect(redisConnectionString));
+builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+{
+    var connectionString = serviceProvider.GetRequiredService<IConfiguration>().GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is not configured.");
+    return ConnectionMultiplexer.Connect(connectionString);
+});
 
 builder.Services.AddHealthChecks()
     .AddCheck<MySqlHealthCheck>("mysql")
@@ -99,6 +110,18 @@ builder.Services.AddHttpClient<IPlacesClient, GooglePlacesClient>();
 // Swap for a real Razorpay/Stripe-backed implementation once credentials exist.
 builder.Services.AddSingleton<IPaymentGateway, NotConfiguredPaymentGateway>();
 
+// ── Astro ────────────────────────────────────────────────────────────────
+// Built on Astronomy Engine (MIT), not Swiss Ephemeris — see backend/README.md.
+builder.Services.AddSingleton<IAyanamsaService, LahiriAyanamsaService>();
+builder.Services.AddSingleton<IAscendantCalculator, AscendantCalculator>();
+builder.Services.AddSingleton<IAstroEngineService, AstroEngineService>();
+builder.Services.AddSingleton<IDashaService, VimshottariDashaService>();
+builder.Services.AddSingleton<IPanchangService, PanchangService>();
+builder.Services.AddSingleton<ITransitService, TransitService>();
+builder.Services.AddSingleton<ITrafficSignalService, TrafficSignalService>();
+builder.Services.AddSingleton<IPlacidusHouseCalculator, PlacidusHouseCalculator>();
+builder.Services.AddSingleton<IKpService, KpService>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -130,6 +153,10 @@ app.MapPlacesEndpoints();
 app.MapNotificationEndpoints();
 app.MapConsultationEndpoints();
 app.MapSubscriptionEndpoints();
+app.MapPanchangEndpoints();
+app.MapTransitEndpoints();
+app.MapSignalEndpoints();
+app.MapChartEndpoints();
 
 app.Run();
 

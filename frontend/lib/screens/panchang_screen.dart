@@ -2,11 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/widgets.dart';
 import '../theme/app_theme.dart';
+import '../services/panchang_api.dart';
 import '../nav.dart';
 
 /// Panchang tab — Figma node 1:544 (dc_544_panchang.txt).
-/// Rahu Kaal alert with live countdown, Sunrise/Sunset pair, Shukla Paksha
-/// waxing cycle, The Four Pillars, and an "Ask Jay Now" CTA. Data is mocked.
+/// Rahu Kaal alert with live countdown, Sunrise/Sunset pair, Paksha waxing/
+/// waning cycle, and The Four Pillars. Wired to GET /panchang/today.
 class PanchangScreen extends StatefulWidget {
   const PanchangScreen({super.key});
 
@@ -14,21 +15,28 @@ class PanchangScreen extends StatefulWidget {
   State<PanchangScreen> createState() => _PanchangScreenState();
 }
 
+// The 15 within-Paksha Tithi names, in order — used only to give the phase
+// dots a real data-driven position (how far through the 15-day arc), not to
+// invent a description we don't have.
+const _tithiDayNames = [
+  'Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami', 'Shashthi', 'Saptami',
+  'Ashtami', 'Navami', 'Dashami', 'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi',
+];
+
 class _PanchangScreenState extends State<PanchangScreen> {
-  // Rahu Kaal ends in 01:42:08 → count down live.
-  Duration _remaining = const Duration(hours: 1, minutes: 42, seconds: 8);
+  Map<String, dynamic>? _panchang;
+  bool _loading = true;
+  bool _errored = false;
   Timer? _timer;
+  DateTime _now = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    _load();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() {
-        _remaining = _remaining > Duration.zero
-            ? _remaining - const Duration(seconds: 1)
-            : Duration.zero;
-      });
+      setState(() => _now = DateTime.now());
     });
   }
 
@@ -38,24 +46,74 @@ class _PanchangScreenState extends State<PanchangScreen> {
     super.dispose();
   }
 
-  String get _countdown {
-    final h = _remaining.inHours.toString().padLeft(2, '0');
-    final m = (_remaining.inMinutes % 60).toString().padLeft(2, '0');
-    final s = (_remaining.inSeconds % 60).toString().padLeft(2, '0');
-    return '$h:$m:$s';
+  Future<void> _load() async {
+    try {
+      final panchang = await PanchangApi.getToday();
+      if (!mounted) return;
+      setState(() {
+        _panchang = panchang;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
   }
+
+  DateTime _parseUtc(String iso) => DateTime.parse(iso).toLocal();
+
+  String _formatTime(String iso) {
+    final t = _parseUtc(iso);
+    final hour12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final minute = t.minute.toString().padLeft(2, '0');
+    return '$hour12:$minute';
+  }
+
+  String _meridiem(String iso) => _parseUtc(iso).hour < 12 ? 'AM' : 'PM';
+
+  String _endsAtLabel(String iso) => 'Ends ${_formatTime(iso)} ${_meridiem(iso)}';
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const CosmicScrollView(
+        child: SizedBox(
+          height: 400,
+          child: Center(
+            child: CircularProgressIndicator(
+                strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+          ),
+        ),
+      );
+    }
+
+    if (_errored || _panchang == null) {
+      return CosmicScrollView(
+        child: SizedBox(
+          height: 400,
+          child: Center(
+            child: Text("Couldn't load today's Panchang — check your connection.",
+                textAlign: TextAlign.center, style: AppText.body),
+          ),
+        ),
+      );
+    }
+
+    final panchang = _panchang!;
+    final rahuKaal = panchang['rahuKaal'] as Map<String, dynamic>;
+
     return CosmicScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _rahuKaalCard(),
+          _rahuKaalCard(rahuKaal),
           const SizedBox(height: AppSpacing.xxl),
-          _sunPair(),
+          _sunPair(panchang),
           const SizedBox(height: AppSpacing.xxl),
-          _shuklaPakshaCard(),
+          _pakshaCard(panchang),
           const SizedBox(height: AppSpacing.section),
           _fourPillarsHeading(),
           const SizedBox(height: AppSpacing.xxl),
@@ -64,9 +122,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
             iconHash: 'aaf576a65c3064d609174b020dd827ecb6badf3e.svg',
             iconW: 13,
             iconH: 20,
-            name: 'Ekadashi',
-            sub: 'Ends 11:22 PM',
-            desc: 'A day of spiritual cleansing and internal fortification.',
+            name: (panchang['tithi'] as Map<String, dynamic>)['name'] as String,
+            sub: _endsAtLabel((panchang['tithi'] as Map<String, dynamic>)['endsAt'] as String),
           ),
           const SizedBox(height: AppSpacing.lg),
           _pillarCard(
@@ -74,9 +131,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
             iconHash: '9d1fc44ecea6a95fd0a9e72c7addacee3adf5cc8.svg',
             iconW: 20,
             iconH: 19,
-            name: 'Rohini',
-            sub: 'Full Duration',
-            desc: 'Abundant energy for creative pursuits and agriculture.',
+            name: (panchang['nakshatra'] as Map<String, dynamic>)['name'] as String,
+            sub: _endsAtLabel((panchang['nakshatra'] as Map<String, dynamic>)['endsAt'] as String),
           ),
           const SizedBox(height: AppSpacing.lg),
           _pillarCard(
@@ -84,9 +140,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
             iconHash: '9d4a100e00500bd8c952292e776376f031412843.svg',
             iconW: 16,
             iconH: 16,
-            name: 'Variyan',
-            sub: 'Ends 09:15 AM',
-            desc: 'Favorable for social gatherings and group achievements.',
+            name: (panchang['yoga'] as Map<String, dynamic>)['name'] as String,
+            sub: _endsAtLabel((panchang['yoga'] as Map<String, dynamic>)['endsAt'] as String),
           ),
           const SizedBox(height: AppSpacing.lg),
           _pillarCard(
@@ -94,9 +149,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
             iconHash: 'c0c061064ca3ed921f90a2e20ef1432bc3c7b279.svg',
             iconW: 16,
             iconH: 20,
-            name: 'Bava',
-            sub: 'Active Now',
-            desc: 'Stabilizing energy for property matters and foundations.',
+            name: (panchang['karana'] as Map<String, dynamic>)['name'] as String,
+            sub: _endsAtLabel((panchang['karana'] as Map<String, dynamic>)['endsAt'] as String),
           ),
           const SizedBox(height: AppSpacing.xxl),
           _ctaCard(),
@@ -106,7 +160,18 @@ class _PanchangScreenState extends State<PanchangScreen> {
   }
 
   // ── Rahu Kaal Alert ────────────────────────────────────────────────────────
-  Widget _rahuKaalCard() {
+  Widget _rahuKaalCard(Map<String, dynamic> rahuKaal) {
+    final start = _parseUtc(rahuKaal['start'] as String);
+    final end = _parseUtc(rahuKaal['end'] as String);
+    final isActive = _now.isAfter(start) && _now.isBefore(end);
+    final isUpcoming = _now.isBefore(start);
+
+    final Duration? countdown = isActive
+        ? end.difference(_now)
+        : isUpcoming
+            ? start.difference(_now)
+            : null; // already passed for today
+
     return GlassCard(
       goldTopBorder: true,
       fill: AppColors.surfaceRaised,
@@ -115,7 +180,6 @@ class _PanchangScreenState extends State<PanchangScreen> {
       padding: EdgeInsets.zero,
       child: Stack(
         children: [
-          // Faint constellation flourish, top-right corner.
           Positioned(
             top: 0,
             right: 0,
@@ -148,9 +212,14 @@ class _PanchangScreenState extends State<PanchangScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  'The shadow planet Rahu currently obscures the cosmic '
-                  'flow. Exercise extreme caution in new ventures and '
-                  'significant negotiations.',
+                  isActive
+                      ? 'The shadow planet Rahu currently obscures the cosmic '
+                          'flow. Exercise extreme caution in new ventures and '
+                          'significant negotiations.'
+                      : isUpcoming
+                          ? 'Rahu Kaal begins later today — plan important '
+                              'commitments before it starts.'
+                          : "Today's Rahu Kaal has passed — the shadow has lifted.",
                   style: AppText.sans(
                     size: 15,
                     color: AppColors.textTan,
@@ -158,7 +227,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
-                _countdownBlock(),
+                if (countdown != null) _countdownBlock(countdown, isActive),
               ],
             ),
           ),
@@ -167,11 +236,14 @@ class _PanchangScreenState extends State<PanchangScreen> {
     );
   }
 
-  Widget _countdownBlock() {
+  Widget _countdownBlock(Duration remaining, bool isActive) {
+    final h = remaining.inHours.toString().padLeft(2, '0');
+    final m = (remaining.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (remaining.inSeconds % 60).toString().padLeft(2, '0');
     return Column(
       children: [
         Text(
-          'Ends in',
+          isActive ? 'Ends in' : 'Starts in',
           style: AppText.sans(
             size: 12,
             weight: FontWeight.w700,
@@ -183,7 +255,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            _countdown,
+            '$h:$m:$s',
             style: AppText.serif(
               size: 56,
               weight: FontWeight.w700,
@@ -193,40 +265,42 @@ class _PanchangScreenState extends State<PanchangScreen> {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.md),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.critical,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SvgIcon(
-                '9aa6a04603bad87027c58b9b449c323825fa1cec.svg',
-                size: 12,
-                color: AppColors.criticalBg,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                'CRITICAL PHASE',
-                style: AppText.sans(
-                  size: 13,
-                  weight: FontWeight.w700,
+        if (isActive) ...[
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.critical,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SvgIcon(
+                  '9aa6a04603bad87027c58b9b449c323825fa1cec.svg',
+                  size: 12,
                   color: AppColors.criticalBg,
-                  letterSpacing: 0.7,
                 ),
-              ),
-            ],
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  'CRITICAL PHASE',
+                  style: AppText.sans(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: AppColors.criticalBg,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 
   // ── Sunrise / Sunset pair ───────────────────────────────────────────────────
-  Widget _sunPair() {
+  Widget _sunPair(Map<String, dynamic> panchang) {
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -237,9 +311,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
               iconW: 32,
               iconH: 32,
               label: 'SUNRISE',
-              time: '06:24',
-              meridiem: 'AM',
-              note: 'Solar ascension\nbegins in Aries',
+              time: _formatTime(panchang['sunrise'] as String),
+              meridiem: _meridiem(panchang['sunrise'] as String),
             ),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -249,9 +322,8 @@ class _PanchangScreenState extends State<PanchangScreen> {
               iconW: 30,
               iconH: 24,
               label: 'SUNSET',
-              time: '06:12',
-              meridiem: 'PM',
-              note: 'Descending into\ncosmic dusk',
+              time: _formatTime(panchang['sunset'] as String),
+              meridiem: _meridiem(panchang['sunset'] as String),
             ),
           ),
         ],
@@ -266,7 +338,6 @@ class _PanchangScreenState extends State<PanchangScreen> {
     required String label,
     required String time,
     required String meridiem,
-    required String note,
   }) {
     return GlassCard(
       fill: AppColors.surfaceRaised,
@@ -299,22 +370,19 @@ class _PanchangScreenState extends State<PanchangScreen> {
                 color: AppColors.textPrimary,
                 height: 1.3,
               )),
-          const SizedBox(height: AppSpacing.lg),
-          Text(note,
-              textAlign: TextAlign.center,
-              style: AppText.sans(
-                size: 12,
-                color: AppColors.textTan,
-                height: 1.35,
-              )),
         ],
       ),
     );
   }
 
-  // ── Shukla Paksha ────────────────────────────────────────────────────────────
-  Widget _shuklaPakshaCard() {
-    // ponytail: dropped the mix-blend texture PNG overlay — purely decorative.
+  // ── Paksha ────────────────────────────────────────────────────────────────
+  Widget _pakshaCard(Map<String, dynamic> panchang) {
+    final paksha = panchang['paksha'] as String; // "Shukla" or "Krishna"
+    final tithiName = (panchang['tithi'] as Map<String, dynamic>)['name'] as String;
+    final dayIndex = _tithiDayNames.indexOf(tithiName); // -1 for Purnima/Amavasya (the 15th day)
+    final position = dayIndex == -1 ? 15 : dayIndex + 1; // 1-15 through the Paksha
+    final litDots = ((position / 15.0) * 5).ceil().clamp(1, 5);
+
     return GlassCard(
       fill: AppColors.surfaceRaised,
       fillOpacity: 0.5,
@@ -324,7 +392,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
       child: Column(
         children: [
           Text(
-            'Shukla\nPaksha',
+            '$paksha\nPaksha',
             textAlign: TextAlign.center,
             style: AppText.serif(
               size: 40,
@@ -336,19 +404,18 @@ class _PanchangScreenState extends State<PanchangScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'The Waxing Crescent Cycle',
+            paksha == 'Shukla' ? 'The Waxing Crescent Cycle' : 'The Waning Crescent Cycle',
             style: AppText.serif(size: 16, color: AppColors.goldLight),
           ),
           const SizedBox(height: AppSpacing.xl),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _phaseDot(AppColors.gold),
-              _phaseDot(AppColors.gold.withValues(alpha: 0.8)),
-              _phaseDot(AppColors.gold.withValues(alpha: 0.6)),
-              _phaseDot(AppColors.surfaceRaised3),
-              _phaseDot(AppColors.surfaceRaised3),
-            ],
+            children: List.generate(5, (i) {
+              final lit = i < litDots;
+              return _phaseDot(lit
+                  ? AppColors.gold.withValues(alpha: 1.0 - (i * 0.1))
+                  : AppColors.surfaceRaised3);
+            }),
           ),
         ],
       ),
@@ -382,7 +449,6 @@ class _PanchangScreenState extends State<PanchangScreen> {
     required double iconH,
     required String name,
     required String sub,
-    required String desc,
   }) {
     return GlassCard(
       fill: AppColors.surfaceRaised,
@@ -414,15 +480,6 @@ class _PanchangScreenState extends State<PanchangScreen> {
           const SizedBox(height: AppSpacing.xs),
           Text(sub,
               style: AppText.sans(size: 14, color: AppColors.goldLighter)),
-          const SizedBox(height: AppSpacing.lg),
-          const Divider(color: AppColors.surfaceRaised3, height: 1),
-          const SizedBox(height: AppSpacing.lg),
-          Text(desc,
-              style: AppText.sans(
-                size: 15,
-                color: AppColors.textTan,
-                height: 1.6,
-              )),
         ],
       ),
     );
@@ -456,7 +513,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
             label: 'Ask Jay Now',
             expand: false,
             height: 52,
-            onPressed: () => goToChat(context),
+            onPressed: () => goToAskJayTab(context),
           ),
         ],
       ),

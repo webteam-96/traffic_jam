@@ -224,7 +224,7 @@ class AboutJayKotechaScreen extends StatelessWidget {
           GoldButton(
             label: 'ASK JAY A QUESTION',
             icon: Icons.chat_bubble_outline,
-            onPressed: () => goToChat(context),
+            onPressed: () => goToAskJayTab(context),
           ),
           const SizedBox(height: AppSpacing.lg),
           GoldButton(

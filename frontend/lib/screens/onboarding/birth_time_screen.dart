@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/nav.dart';
+import 'package:traffic_jam/models/onboarding_data.dart';
 
 /// Onboarding step 2 of 4 — birth time. Pushed screen (DetailScaffold).
 class BirthTimeScreen extends StatefulWidget {
@@ -12,10 +13,18 @@ class BirthTimeScreen extends StatefulWidget {
 }
 
 class _BirthTimeScreenState extends State<BirthTimeScreen> {
-  int _hour = 4; // 1..12
-  int _minute = 42; // 0..59
-  bool _isAm = true;
-  bool _unknown = false;
+  int _hour = OnboardingData.hour; // 1..12
+  int _minute = OnboardingData.minute; // 0..59
+  bool _isAm = OnboardingData.isAm;
+  bool _unknown = OnboardingData.unknownTime;
+
+  void _continue(BuildContext context) {
+    OnboardingData.hour = _hour;
+    OnboardingData.minute = _minute;
+    OnboardingData.isAm = _isAm;
+    OnboardingData.unknownTime = _unknown;
+    goToBirthPlace(context);
+  }
 
   String _pad(int v) => v.toString().padLeft(2, '0');
 
@@ -149,7 +158,7 @@ class _BirthTimeScreenState extends State<BirthTimeScreen> {
           GoldButton(
             label: 'CONTINUE',
             icon: Icons.arrow_forward,
-            onPressed: () => goToBirthPlace(context),
+            onPressed: () => _continue(context),
           ),
           const SizedBox(height: AppSpacing.md),
         ],
