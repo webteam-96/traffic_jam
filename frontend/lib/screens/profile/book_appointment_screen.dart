@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
+import 'package:traffic_jam/services/user_api.dart';
+import 'package:traffic_jam/services/consult_api.dart';
+import 'package:traffic_jam/services/api_client.dart';
+import 'package:traffic_jam/nav.dart';
 
 /// Book an Appointment — §9 of Business Flow.
-/// Lead-capture form prefilled with user data; routes to admin panel with chart context.
+/// Lead-capture form prefilled with the signed-in user's real birth data,
+/// submitted to POST /consult/appointments. No scheduling/admin panel
+/// exists yet (Phase 2), so it lands as a Pending request the team follows
+/// up on using the reference number this screen shows back.
 class BookAppointmentScreen extends StatefulWidget {
   const BookAppointmentScreen({super.key});
 
@@ -21,16 +28,30 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   ];
 
   int _areaIndex = 0;
-  final _email = TextEditingController(text: 'user@example.com');
+  final _email = TextEditingController();
   final _message = TextEditingController();
   DateTime? _preferredDate;
   TimeOfDay? _preferredTime;
   bool _consent = false;
+  bool _submitting = false;
   final _formKey = GlobalKey<FormState>();
 
-  // Mock user data (in real app, from auth/user service)
-  static const _mockName = 'Rohan Sharma';
-  static const _mockPhone = '+91 98765 43210';
+  String? _name;
+  bool _loadingProfile = true;
+
+  @override
+  void initState() {
+    super.initState();
+    UserApi.getBirthData().then((data) {
+      if (!mounted) return;
+      setState(() {
+        _name = data?['name'] as String?;
+        _loadingProfile = false;
+      });
+    }).catchError((_) {
+      if (mounted) setState(() => _loadingProfile = false);
+    });
+  }
 
   @override
   void dispose() {
@@ -52,7 +73,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Fill in your details and preferred time. Our team will reach out '
-              'within 24 hours to confirm the appointment.',
+              'to confirm the appointment.',
               style: AppText.body,
             ),
             const SizedBox(height: AppSpacing.xl),
@@ -62,11 +83,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionLabel('YOUR DETAILS (PREFILLED)'),
+                  const SectionLabel('YOUR DETAILS'),
                   const SizedBox(height: AppSpacing.md),
-                  _readonlyField('Full Name', _mockName, Icons.person_outline),
-                  const SizedBox(height: AppSpacing.md),
-                  _readonlyField('Mobile Number', _mockPhone, Icons.phone_outlined),
+                  _readonlyField(
+                    'Full Name',
+                    _loadingProfile ? 'Loading…' : (_name ?? 'Not set — add it in your profile'),
+                    Icons.person_outline,
+                  ),
                   const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: _email,
@@ -202,9 +225,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
             // ── Submit ───────────────────────────────────────────────────
             GoldButton(
-              label: 'SUBMIT REQUEST',
+              label: _submitting ? 'SUBMITTING…' : 'SUBMIT REQUEST',
               icon: Icons.send,
-              onPressed: _consent ? _submit : null,
+              onPressed: _consent && !_submitting ? _submit : null,
             ),
             const SizedBox(height: AppSpacing.section),
 
@@ -343,7 +366,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     if (picked != null) setState(() => _preferredTime = picked);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_preferredDate == null || _preferredTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -355,7 +378,30 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       return;
     }
 
-    // Success — in real app, call API endpoint
+    setState(() => _submitting = true);
+    try {
+      final result = await ConsultApi.bookAppointment(
+        area: _areas[_areaIndex],
+        email: _email.text.trim(),
+        message: _message.text.trim().isEmpty ? null : _message.text.trim(),
+        preferredDate: _preferredDate!,
+        preferredHour24: _preferredTime!.hour,
+        preferredMinute: _preferredTime!.minute,
+      );
+      if (!mounted) return;
+      _showConfirmation(result['reference'] as String);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      toast(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, "Couldn't reach the server — check your connection.");
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _showConfirmation(String reference) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -373,12 +419,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Reference: TJ-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
+              'Reference: $reference',
               style: AppText.sans(size: 14, color: AppColors.amber),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Our team will contact you within 24 hours to schedule your session.',
+              'Our team will contact you to schedule your session.',
               style: AppText.bodySmall,
             ),
           ],

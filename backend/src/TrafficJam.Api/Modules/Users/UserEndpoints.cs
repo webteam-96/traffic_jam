@@ -169,6 +169,66 @@ public static class UserEndpoints
             return Results.Ok();
         });
 
+        // "Data Crypts" (privacy screen) — download-your-data. Everything
+        // that's actually stored for this user, decrypted the same way it's
+        // shown elsewhere in the app (BirthData's EF value converters
+        // decrypt transparently on read).
+        me.MapGet("/export", async (System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+        {
+            var userId = principal.UserId();
+            var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
+            var birthData = await db.BirthData.SingleOrDefaultAsync(b => b.UserId == userId, ct);
+            var subscription = await db.Subscriptions.SingleOrDefaultAsync(s => s.UserId == userId, ct);
+            var notificationPrefs = await db.NotificationPrefs.SingleOrDefaultAsync(p => p.UserId == userId, ct);
+            var questions = await db.Questions.Include(q => q.Messages)
+                .Where(q => q.UserId == userId).ToListAsync(ct);
+            var appointments = await db.Appointments.Where(a => a.UserId == userId).ToListAsync(ct);
+
+            return Results.Ok(new
+            {
+                exportedAt = DateTime.UtcNow,
+                profile = new { user.Id, user.Name, user.CreatedAt },
+                birthData = birthData is null ? null : new
+                {
+                    birthData.Dob, birthData.Tob, birthData.UnknownTime,
+                    birthData.Place, birthData.Lat, birthData.Lng, birthData.Timezone,
+                },
+                subscription = subscription is null ? null : new
+                {
+                    Tier = subscription.Tier.ToString(), Cycle = subscription.Cycle.ToString(), subscription.RenewsAt,
+                },
+                notificationPreferences = notificationPrefs is null ? null : new
+                {
+                    notificationPrefs.Morning, notificationPrefs.RahuKaal, notificationPrefs.Events,
+                    notificationPrefs.Dasha, notificationPrefs.Remedies,
+                },
+                questions = questions.Select(q => new
+                {
+                    q.Id, q.Domain, q.Text, Status = q.Status.ToString(), q.CreatedAt,
+                    Messages = q.Messages.Select(m => new { m.Id, Sender = m.Sender.ToString(), m.Text, m.CreatedAt }),
+                }),
+                appointments = appointments.Select(a => new
+                {
+                    a.Id, a.Area, a.Email, a.Message, a.PreferredDate, a.PreferredTime,
+                    Status = a.Status.ToString(), a.CreatedAt,
+                }),
+            });
+        });
+
+        // Account deletion — every child row (BirthData/Chart/Dasha/
+        // Questions+Messages/Subscription/NotificationPrefs/Devices/
+        // RefreshTokens/Appointments/Notifications) cascades via the FK
+        // configuration in AppDbContext.OnModelCreating, so removing the
+        // User row is enough. Irreversible; the frontend is expected to get
+        // explicit confirmation before calling this.
+        me.MapDelete("", async (System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == principal.UserId(), ct);
+            db.Users.Remove(user);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok();
+        });
+
         me.MapPost("/devices", async (
             DeviceRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
         {
@@ -226,7 +286,7 @@ public static class UserEndpoints
                 tropicalLongitude = result.AscendantTropicalLongitude,
                 siderealLongitude = result.AscendantSiderealLongitude,
                 signIndex = result.AscendantSignIndex,
-                sign = timeKnown ? VedicMath.SignNames[result.AscendantSignIndex] : null,
+                sign = result.AscendantSignIndex is int ascSign ? VedicMath.SignNames[ascSign] : null,
                 known = timeKnown,
             },
             planets = result.D1,

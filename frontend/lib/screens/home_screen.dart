@@ -4,6 +4,7 @@ import '../theme/app_assets.dart';
 import '../widgets/widgets.dart';
 import '../nav.dart';
 import '../services/panchang_api.dart';
+import '../services/signal_api.dart';
 import 'notifications_screen.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'details/traffic_signal_screen.dart';
@@ -232,22 +233,66 @@ class _TodaysPanchangCardState extends State<_TodaysPanchangCard> {
 }
 
 // ── Celestial Vibe Meter ──────────────────────────────────────────────────────
-class _VibeMeterCard extends StatelessWidget {
+// Preview of the same real factors shown in full on VibeMeterScreen (moon
+// transit / Panchang / Dasha — from the Traffic Signal breakdown).
+class _VibeMeterCard extends StatefulWidget {
   const _VibeMeterCard();
+
+  @override
+  State<_VibeMeterCard> createState() => _VibeMeterCardState();
+}
+
+class _VibeMeterCardState extends State<_VibeMeterCard> {
+  Map<String, dynamic>? _breakdown;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    SignalApi.getToday().then((signal) {
+      if (!mounted) return;
+      setState(() {
+        _breakdown = signal['breakdown'] as Map<String, dynamic>;
+        _loading = false;
+      });
+    }).catchError((_) {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  double _score(String key) =>
+      ((_breakdown?[key] as Map<String, dynamic>?)?['score'] as int? ?? 0) / 100.0;
 
   @override
   Widget build(BuildContext context) {
     return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          SectionLabel('CELESTIAL VIBE METER'),
-          SizedBox(height: AppSpacing.xl),
-          MeterBar(label: 'Vitality', value: 0.85),
-          SizedBox(height: AppSpacing.lg),
-          MeterBar(label: 'Intuition', value: 0.92),
-          SizedBox(height: AppSpacing.lg),
-          MeterBar(label: 'Focus', value: 0.94),
+        children: [
+          const SectionLabel('CELESTIAL VIBE METER'),
+          const SizedBox(height: AppSpacing.xl),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+                ),
+              ),
+            )
+          else if (_breakdown == null)
+            Text('Save your birth data to see your vibe meter.',
+                style: AppText.sans(size: 13, color: AppColors.textMuted))
+          else ...[
+            MeterBar(label: 'Moon Transit', value: _score('moonTransit')),
+            const SizedBox(height: AppSpacing.lg),
+            MeterBar(label: 'Panchang', value: _score('panchang')),
+            const SizedBox(height: AppSpacing.lg),
+            MeterBar(label: 'Dasha', value: _score('dasha')),
+          ],
         ],
       ),
     );

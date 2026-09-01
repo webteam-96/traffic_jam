@@ -1,135 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
+import 'package:traffic_jam/services/transit_api.dart';
+import 'package:traffic_jam/data/planet_dignity.dart';
 
 /// Upcoming Major Transits — §8 of Business Flow.
-/// Chronological list of significant planetary events over ~3 months, personalised to user's chart.
-class UpcomingTransitsScreen extends StatelessWidget {
+/// Each of Sun/Mars/Jupiter/Saturn/Rahu/Ketu's next sign change ("ingress"),
+/// wired to GET /transits/upcoming — a real forward scan of the ephemeris
+/// (see TransitEndpoints.cs), not a fixed list. Moon/Mercury/Venus change
+/// sign too often to be a meaningful "upcoming event" and aren't included.
+/// Severity is the classical dignity (see planet_dignity.dart) the planet
+/// has in the sign it's entering — real, not invented per-event prose.
+class UpcomingTransitsScreen extends StatefulWidget {
   const UpcomingTransitsScreen({super.key});
 
-  static const List<_TransitEvent> _events = [
-    _TransitEvent(
-      date: 'Aug 26, 2026',
-      planet: 'Saturn',
-      event: 'Retrograde begins in Pisces',
-      house: '12th from Lagna',
-      interpretation:
-          'A 4.5-month review of spiritual debts, subconscious patterns, and hidden '
-          'enemies. Old karmic themes resurface for resolution. Avoid new long-term '
-          'commitments in foreign lands or institutions.',
-      severity: _Severity.high,
-      icon: Icons.brightness_3,
-    ),
-    _TransitEvent(
-      date: 'Sep 4, 2026',
-      planet: 'Jupiter',
-      event: 'Enters Gemini',
-      house: '3rd from Moon',
-      interpretation:
-          'Expansion through communication, learning, and short travel. Siblings and '
-          'neighbors become sources of opportunity. Excellent period for writing, '
-          'teaching, or launching a newsletter/podcast.',
-      severity: _Severity.benefic,
-      icon: Icons.wb_sunny_outlined,
-    ),
-    _TransitEvent(
-      date: 'Sep 18, 2026',
-      planet: 'Mercury',
-      event: 'Retrograde in Virgo',
-      house: '6th from Lagna',
-      interpretation:
-          'Review daily routines, health protocols, and work processes. Avoid signing '
-          'contracts or launching tech products. Backup data; double-check communications.',
-      severity: _Severity.moderate,
-      icon: Icons.auto_awesome,
-    ),
-    _TransitEvent(
-      date: 'Oct 7, 2026',
-      planet: 'Sun',
-      event: 'Solar Eclipse in Virgo',
-      house: '6th from Moon',
-      interpretation:
-          'A powerful reset for health, service, and work-life boundaries. Something '
-          'ends to make space for a more authentic routine. Effects felt 6 months prior '
-          'and 6 months post.',
-      severity: _Severity.high,
-      icon: Icons.wb_sunny_outlined,
-    ),
-    _TransitEvent(
-      date: 'Oct 22, 2026',
-      planet: 'Mars',
-      event: 'Enters Cancer (Debilitated)',
-      house: '4th from Lagna',
-      interpretation:
-          'Mars in fall triggers domestic tension and emotional reactivity. Property '
-          'matters and mother-figure relationships need patience. Channel energy into '
-          'home improvement, not arguments.',
-      severity: _Severity.challenging,
-      icon: Icons.local_fire_department,
-    ),
-    _TransitEvent(
-      date: 'Nov 11, 2026',
-      planet: 'Venus',
-      event: 'Enters Sagittarius',
-      house: '9th from Moon',
-      interpretation:
-          'Love, beauty, and finances expand through higher learning, travel, or '
-          'philosophical alignment. Attraction to foreign cultures or spiritual partners '
-          'increases. Favorable for creative publishing.',
-      severity: _Severity.benefic,
-      icon: Icons.favorite_outline,
-    ),
-    _TransitEvent(
-      date: 'Nov 25, 2026',
-      planet: 'Rahu–Ketu',
-      event: 'Transit axis shift (Rahu to Pisces, Ketu to Virgo)',
-      house: 'Rahu in 12th / Ketu in 6th',
-      interpretation:
-          '18-month cycle begins: spiritual dissolution (Rahu in 12th) meets service '
-          'refinement (Ketu in 6th). Past-life karma around isolation vs. usefulness '
-          'activates. Watch for health anxieties and psychic openings.',
-      severity: _Severity.high,
-      icon: Icons.auto_awesome,
-    ),
-    _TransitEvent(
-      date: 'Dec 15, 2026',
-      planet: 'Jupiter',
-      event: 'Retrograde in Gemini',
-      house: '3rd from Moon',
-      interpretation:
-          'Internal review of beliefs, communication style, and learning methods. '
-          'Revisit abandoned studies or rewrite old content. Avoid over-promising in '
-          'negotiations until direct station.',
-      severity: _Severity.moderate,
-      icon: Icons.wb_sunny_outlined,
-    ),
-  ];
-
   @override
-  Widget build(BuildContext context) {
-    return DetailScaffold(
-      title: 'Upcoming Major Transits',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionLabel('NEXT 90 DAYS'),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Personalised planetary movements interpreted for your chart. '
-            'Tap any event for details and to set a reminder.',
-            style: AppText.body,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          for (int i = 0; i < _events.length; i++) ...[
-            _TransitCard(event: _events[i]),
-            if (i != _events.length - 1) const SizedBox(height: AppSpacing.md),
-          ],
-          const SizedBox(height: AppSpacing.xxl),
-        ],
-      ),
-    );
-  }
+  State<UpcomingTransitsScreen> createState() => _UpcomingTransitsScreenState();
 }
+
+enum _Severity { benefic, moderate, challenging, high }
 
 class _TransitEvent {
   const _TransitEvent({
@@ -151,7 +40,133 @@ class _TransitEvent {
   final IconData icon;
 }
 
-enum _Severity { benefic, moderate, challenging, high }
+const _planetIcons = {
+  'Sun': Icons.wb_sunny_outlined,
+  'Mars': Icons.local_fire_department,
+  'Jupiter': Icons.auto_awesome,
+  'Saturn': Icons.brightness_3,
+  'Rahu': Icons.blur_circular,
+  'Ketu': Icons.blur_on,
+};
+
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+_Severity _severityFor(String dignityLabel) => switch (dignityLabel) {
+      'Exalted' || 'Own Sign' => _Severity.benefic,
+      'Friendly Sign' => _Severity.moderate,
+      'Neutral Sign' => _Severity.moderate,
+      'Enemy Sign' => _Severity.challenging,
+      'Debilitated' => _Severity.high,
+      _ => _Severity.moderate,
+    };
+
+class _UpcomingTransitsScreenState extends State<UpcomingTransitsScreen> {
+  List<_TransitEvent>? _events;
+  bool _loading = true;
+  bool _errored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await TransitApi.getUpcoming();
+      final events = raw.map((e) {
+        final planet = e['planet'] as String;
+        final toSign = e['toSign'] as String;
+        final fromSign = e['fromSign'] as String;
+        final date = DateTime.parse(e['date'] as String);
+        final houseFromMoon = e['houseFromMoon'] as int;
+        final houseFromLagna = e['houseFromLagna'] as int?;
+        final toSignIndex = kSignNames.indexOf(toSign);
+        final dignity = classicalDignity(planet, toSignIndex);
+        final domain = kGrahaDomain[planet] ?? 'this area of life';
+
+        return _TransitEvent(
+          date: '${_months[date.month - 1]} ${date.day}, ${date.year}',
+          planet: planet,
+          event: 'Enters $toSign',
+          house: houseFromLagna != null
+              ? 'House $houseFromMoon from your Moon · House $houseFromLagna from your Lagna'
+              : 'House $houseFromMoon from your Moon',
+          interpretation: '$planet moves from $fromSign into $toSign, shifting energy '
+              'around $domain. In $toSign, $planet is ${dignity.label.toLowerCase()} — '
+              '${_dignityNote(dignity.label)}',
+          severity: _severityFor(dignity.label),
+          icon: _planetIcons[planet] ?? Icons.auto_awesome,
+        );
+      }).toList();
+      if (!mounted) return;
+      setState(() {
+        _events = events;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
+  }
+
+  String _dignityNote(String label) => switch (label) {
+        'Exalted' => 'expect this transit to bring out its best.',
+        'Own Sign' => 'a steady, self-assured expression of its energy.',
+        'Friendly Sign' => 'a generally supportive, easier stretch.',
+        'Neutral Sign' => 'a mixed period — outcomes depend on effort.',
+        'Enemy Sign' => 'a more effortful stretch — patience helps.',
+        'Debilitated' => 'a challenging placement — go gently here.',
+        _ => 'a period worth watching.',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return DetailScaffold(
+      title: 'Upcoming Major Transits',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionLabel('WHAT\'S NEXT'),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            "Each major graha's next sign change, read against your own chart.",
+            style: AppText.body,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              child: Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+              ),
+            )
+          else if (_errored || _events == null || _events!.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              child: Text(
+                'Save your birth data to see your upcoming transits.',
+                style: AppText.sans(size: 14, color: AppColors.textMuted),
+              ),
+            )
+          else
+            for (int i = 0; i < _events!.length; i++) ...[
+              _TransitCard(event: _events![i]),
+              if (i != _events!.length - 1) const SizedBox(height: AppSpacing.md),
+            ],
+          const SizedBox(height: AppSpacing.xxl),
+        ],
+      ),
+    );
+  }
+}
 
 class _TransitCard extends StatelessWidget {
   const _TransitCard({required this.event});
@@ -228,7 +243,7 @@ class _TransitCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: AppSpacing.xs),
-                    Text('$event.planet: $event.event',
+                    Text('${event.planet}: ${event.event}',
                         style: AppText.cardTitle),
                     Text(event.house,
                         style: AppText.sans(
@@ -244,21 +259,6 @@ class _TransitCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(event.interpretation, style: AppText.bodySmall),
-          const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _setReminder(context),
-              icon: const Icon(Icons.notifications_none, size: 16),
-              label: Text('Set Reminder',
-                  style: AppText.sans(
-                      size: 13, weight: FontWeight.w600, color: AppColors.gold)),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md, vertical: AppSpacing.xs),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -271,17 +271,6 @@ class _TransitCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => _TransitDetailSheet(event: event),
     );
-  }
-
-  void _setReminder(BuildContext context) {
-    Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Reminder set for ${event.date}',
-          style: AppText.sans(size: 14, color: AppColors.textPrimary)),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.surfaceRaised2,
-      duration: const Duration(seconds: 2),
-    ));
   }
 }
 
@@ -361,15 +350,6 @@ class _TransitDetailSheet extends StatelessWidget {
                     const SectionLabel('PERSONAL INTERPRETATION'),
                     const SizedBox(height: AppSpacing.md),
                     Text(event.interpretation, style: AppText.body),
-                    const SizedBox(height: AppSpacing.xl),
-                    GoldButton(
-                      label: 'SET REMINDER',
-                      icon: Icons.notifications,
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _setReminder(context);
-                      },
-                    ),
                     const SizedBox(height: AppSpacing.xxl),
                   ],
                 ),
@@ -379,16 +359,6 @@ class _TransitDetailSheet extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  void _setReminder(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Reminder set for ${event.date}',
-          style: AppText.sans(size: 14, color: AppColors.textPrimary)),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.surfaceRaised2,
-      duration: const Duration(seconds: 2),
-    ));
   }
 }
 

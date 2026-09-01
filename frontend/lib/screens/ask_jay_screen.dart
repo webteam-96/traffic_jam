@@ -16,15 +16,31 @@ class AskJayScreen extends StatefulWidget {
 
 class _AskJayScreenState extends State<AskJayScreen> {
   static const _domains = ['Career', 'Relationship', 'Business'];
-  static const _planIds = ['standard', 'priority'];
   int _domain = 0;
   int _plan = 1; // 0 = Standard, 1 = Priority (active by default in design)
   final _question = TextEditingController();
   bool _sending = false;
 
+  List<Map<String, dynamic>> _plans = [];
+  bool _loadingPlans = true;
+
   // White-input colors are design-specific (no dark-theme token fits).
   static const _inputText = Color(0xFF374151);
   static const _inputHint = Color(0xFF6B7280);
+
+  @override
+  void initState() {
+    super.initState();
+    ConsultApi.getPlans().then((plans) {
+      if (!mounted) return;
+      setState(() {
+        _plans = plans;
+        _loadingPlans = false;
+      });
+    }).catchError((_) {
+      if (mounted) setState(() => _loadingPlans = false);
+    });
+  }
 
   @override
   void dispose() {
@@ -38,12 +54,16 @@ class _AskJayScreenState extends State<AskJayScreen> {
       toast(context, 'Type your question first');
       return;
     }
+    if (_plan >= _plans.length) {
+      toast(context, "Couldn't load plans — check your connection.");
+      return;
+    }
     setState(() => _sending = true);
     try {
       final result = await ConsultApi.askQuestion(
         domain: _domains[_domain],
         question: text,
-        planId: _planIds[_plan],
+        planId: _plans[_plan]['id'] as String,
       );
       if (!mounted) return;
       _question.clear();
@@ -125,27 +145,34 @@ class _AskJayScreenState extends State<AskJayScreen> {
           // ── Response priority ─────────────────────────────────
           const SectionLabel('RESPONSE PRIORITY', color: AppColors.goldLight),
           const SizedBox(height: AppSpacing.lg),
-          _planCard(
-            index: 0,
-            title: 'Standard',
-            price: '₹99',
-            features: const [
-              _Feature('Response in 48-72 hours'),
-              _Feature('Basic astral analysis'),
+          if (_loadingPlans)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+              ),
+            )
+          else if (_plans.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Text("Couldn't load plans — check your connection.",
+                  style: AppText.body),
+            )
+          else
+            for (int i = 0; i < _plans.length; i++) ...[
+              _planCard(
+                index: i,
+                title: _plans[i]['name'] as String,
+                price: '₹${_plans[i]['priceRupees']}',
+                popular: _plans[i]['id'] == 'priority',
+                features: [
+                  _Feature('Response within ${_plans[i]['slaHours']} hour${_plans[i]['slaHours'] == 1 ? '' : 's'}',
+                      strong: _plans[i]['id'] == 'priority'),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
             ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _planCard(
-            index: 1,
-            title: 'Priority',
-            price: '₹299',
-            popular: true,
-            features: const [
-              _Feature('Response in 12-24 hours', strong: true),
-              _Feature('Detailed planetary movement chart'),
-              _Feature('Direct audio note from Jay'),
-            ],
-          ),
           const SizedBox(height: AppSpacing.xxl),
 
           // ── Send ──────────────────────────────────────────────
@@ -158,10 +185,6 @@ class _AskJayScreenState extends State<AskJayScreen> {
 
           // ── Wisdom of the Freeways ────────────────────────────
           _wisdomCard(),
-          const SizedBox(height: AppSpacing.xxl),
-
-          // ── Recent feedback ───────────────────────────────────
-          _feedbackCard(),
         ],
       ),
     );
@@ -401,15 +424,18 @@ class _AskJayScreenState extends State<AskJayScreen> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 _statRow(
-                  Icons.trending_up,
-                  'SUCCESS RATE',
-                  '94% Clarity reported in personal career paths.',
+                  Icons.verified_user_outlined,
+                  'WHO ANSWERS',
+                  'Every question is reviewed personally by Jay or a vetted panel astrologer.',
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 _statRow(
                   Icons.access_time,
-                  'LAST ACTIVE',
-                  'Jay is currently online, answering questions live.',
+                  'RESPONSE TIME',
+                  _plans.isEmpty
+                      ? 'Priority questions get the fastest turnaround.'
+                      : 'Priority questions get a reply within '
+                          '${_plans.firstWhere((p) => p['id'] == 'priority', orElse: () => _plans.first)['slaHours']} hour(s).',
                 ),
               ],
             ),
@@ -462,52 +488,6 @@ class _AskJayScreenState extends State<AskJayScreen> {
     );
   }
 
-  // ── Recent feedback ─────────────────────────────────────────
-  Widget _feedbackCard() {
-    return GlassCard(
-      fill: AppColors.surfaceRaised,
-      fillOpacity: 0.6,
-      borderColor: AppColors.borderSoft,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionLabel('RECENT FEEDBACK', color: AppColors.goldLight),
-          const SizedBox(height: AppSpacing.lg),
-          Container(
-            padding: const EdgeInsets.only(left: 18),
-            decoration: const BoxDecoration(
-              border: Border(left: BorderSide(color: AppColors.gold, width: 2)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '"Jay\'s insight on my business partnership saved me from a '
-                  'major retrograde collision. Truly life-changing advice."',
-                  style: AppText.sans(
-                    size: 14,
-                    color: AppColors.textTan,
-                    height: 20 / 14,
-                    weight: FontWeight.w400,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  '— Priya R., Business Domain',
-                  style: AppText.sans(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: AppColors.textCream,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Check-marked feature line inside a plan card.

@@ -1,32 +1,119 @@
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
+import '../../services/chart_api.dart';
+import '../../data/planet_dignity.dart';
 
-/// Planet Strengths & Life Themes — in-theme pushed screen (no Figma frame).
-/// A 9-planet vertical bar chart (Shadbala-style) with benefic/malefic hints,
-/// an overall strength meter, and a "Life Themes" list. All data mocked const.
-class PlanetStrengthsScreen extends StatelessWidget {
+/// Planet Strengths & Life Themes — a 9-planet bar chart of each graha's
+/// classical sign dignity (exalted/own/friendly/neutral/enemy/debilitated —
+/// see planet_dignity.dart) computed from the real natal D1 chart, plus a
+/// Life Themes list templated off the relevant significator's dignity.
+///
+/// This is a simplified, sign-level strength read, not full Shadbala
+/// (Sthana/Dig/Kala/Cheshta/Naisargika/Drik Bala) — that needs house/time/
+/// aspect inputs this screen doesn't compute. Labelling it "Shadbala" would
+/// overclaim precision the data doesn't have.
+class PlanetStrengthsScreen extends StatefulWidget {
   const PlanetStrengthsScreen({super.key});
 
-  static const _planets = <_Planet>[
-    _Planet('Su', 'Sun', 0.68, false),
-    _Planet('Mo', 'Moon', 0.85, true),
-    _Planet('Ma', 'Mars', 0.57, false),
-    _Planet('Me', 'Mercury', 0.71, true),
-    _Planet('Ju', 'Jupiter', 0.92, true),
-    _Planet('Ve', 'Venus', 0.79, true),
-    _Planet('Sa', 'Saturn', 0.46, false),
-    _Planet('Ra', 'Rahu', 0.34, false),
-    _Planet('Ke', 'Ketu', 0.41, false),
-  ];
+  @override
+  State<PlanetStrengthsScreen> createState() => _PlanetStrengthsScreenState();
+}
 
-  static const _themes = <_Theme>[
-    _Theme(Icons.workspace_premium, 'Career', 'Leadership & recognition'),
-    _Theme(Icons.savings_outlined, 'Wealth', 'Steady accumulation'),
-    _Theme(Icons.favorite_border, 'Relationships', 'Deep, enduring loyalty'),
-    _Theme(Icons.spa_outlined, 'Health', 'Resilient vitality'),
-    _Theme(Icons.self_improvement, 'Spirituality', 'Inner awakening'),
-  ];
+class _Planet {
+  final String abbr;
+  final String name;
+  final double strength; // 0..1
+  final String dignityLabel;
+  final bool benefic;
+  const _Planet(this.abbr, this.name, this.strength, this.dignityLabel, this.benefic);
+}
+
+class _Theme {
+  final IconData icon;
+  final String category;
+  final String description;
+  const _Theme(this.icon, this.category, this.description);
+}
+
+class _PlanetStrengthsScreenState extends State<PlanetStrengthsScreen> {
+  static const _abbr = {
+    'Sun': 'Su', 'Moon': 'Mo', 'Mars': 'Ma', 'Mercury': 'Me', 'Jupiter': 'Ju',
+    'Venus': 'Ve', 'Saturn': 'Sa', 'Rahu': 'Ra', 'Ketu': 'Ke',
+  };
+  // Natural benefic/malefic classification (Moon assumed waxing — see
+  // Cosmic Foundations → 9 Planets for the general rule).
+  static const _naturalBenefics = {'Moon', 'Mercury', 'Jupiter', 'Venus'};
+
+  List<_Planet>? _planets;
+  List<_Theme>? _themes;
+  bool _loading = true;
+  bool _errored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final chart = await ChartApi.getChart();
+      final d1 = (chart['d1'] as List).cast<Map<String, dynamic>>();
+      final dignityByPlanet = <String, Dignity>{};
+      final planets = <_Planet>[];
+      for (final abbrEntry in _abbr.entries) {
+        final name = abbrEntry.key;
+        final row = d1.where((p) => p['planet'] == name).firstOrNull;
+        if (row == null) continue;
+        final signIndex = row['signIndex'] as int;
+        final dignity = classicalDignity(name, signIndex);
+        dignityByPlanet[name] = dignity;
+        planets.add(_Planet(
+          abbrEntry.value, name, dignity.strength, dignity.label,
+          _naturalBenefics.contains(name),
+        ));
+      }
+      final themes = [
+        _themeFor(Icons.workspace_premium, 'Career', 'Sun', dignityByPlanet),
+        _themeFor(Icons.savings_outlined, 'Wealth', 'Jupiter', dignityByPlanet),
+        _themeFor(Icons.favorite_border, 'Relationships', 'Venus', dignityByPlanet),
+        _themeFor(Icons.spa_outlined, 'Health', 'Mars', dignityByPlanet),
+        _themeFor(Icons.self_improvement, 'Spirituality', 'Ketu', dignityByPlanet),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _planets = planets;
+        _themes = themes;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
+  }
+
+  _Theme _themeFor(IconData icon, String category, String significator,
+      Map<String, Dignity> dignities) {
+    final dignity = dignities[significator];
+    final domain = kGrahaDomain[significator] ?? '';
+    if (dignity == null) {
+      return _Theme(icon, category, 'Save your birth data to see this reading.');
+    }
+    final desc = switch (dignity.label) {
+      'Exalted' => 'Exceptionally favoured — expect strong results in $domain.',
+      'Own Sign' => 'Solidly placed — steady, self-reliant strength in $domain.',
+      'Friendly Sign' => 'Well supported — a gentle lift in $domain.',
+      'Neutral Sign' => 'Mixed footing — $domain unfolds gradually, with effort.',
+      'Enemy Sign' => 'Under some strain — $domain calls for extra patience.',
+      'Debilitated' => 'Weakly placed — $domain needs conscious, sustained work.',
+      _ => domain,
+    };
+    return _Theme(icon, category, desc);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +122,7 @@ class PlanetStrengthsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionLabel('SHADBALA ANALYSIS'),
+          const SectionLabel('DIGNITY ANALYSIS'),
           const SizedBox(height: AppSpacing.md),
           Text('Planetary Power',
               style: AppText.serif(
@@ -44,20 +131,38 @@ class PlanetStrengthsScreen extends StatelessWidget {
                   color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Relative strength of the nine grahas in your natal chart, and the '
+            'Classical sign dignity of the nine grahas in your natal chart, and the '
             'life themes they shape.',
             style: AppText.sans(
                 size: 15, color: AppColors.textTan, height: 1.55),
           ),
           const SizedBox(height: AppSpacing.xxl),
-          _chartCard(),
-          const SizedBox(height: AppSpacing.section),
-          Text('Life Themes',
-              style: AppText.serif(size: 24, color: AppColors.textPrimary)),
-          const SizedBox(height: AppSpacing.lg),
-          for (final t in _themes) ...[
-            _themeRow(t),
-            const SizedBox(height: AppSpacing.md),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              child: Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+              ),
+            )
+          else if (_errored || _planets == null || _planets!.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              child: Text(
+                'Save your birth data to see your planetary strengths.',
+                style: AppText.sans(size: 14, color: AppColors.textMuted),
+              ),
+            )
+          else ...[
+            _chartCard(_planets!),
+            const SizedBox(height: AppSpacing.section),
+            Text('Life Themes',
+                style: AppText.serif(size: 24, color: AppColors.textPrimary)),
+            const SizedBox(height: AppSpacing.lg),
+            for (final t in _themes!) ...[
+              _themeRow(t),
+              const SizedBox(height: AppSpacing.md),
+            ],
           ],
         ],
       ),
@@ -65,7 +170,8 @@ class PlanetStrengthsScreen extends StatelessWidget {
   }
 
   // ── Bar chart ────────────────────────────────────────────────────────────
-  Widget _chartCard() {
+  Widget _chartCard(List<_Planet> planets) {
+    final overall = planets.map((p) => p.strength).reduce((a, b) => a + b) / planets.length;
     return GlassCard(
       fill: AppColors.surfaceRaised,
       fillOpacity: 0.5,
@@ -78,7 +184,7 @@ class PlanetStrengthsScreen extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              for (final p in _planets) Expanded(child: _bar(p)),
+              for (final p in planets) Expanded(child: _bar(p)),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
@@ -92,7 +198,7 @@ class PlanetStrengthsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          const MeterBar(label: 'Overall Chart Strength', value: 0.74),
+          MeterBar(label: 'Overall Chart Strength', value: overall),
         ],
       ),
     );
@@ -113,18 +219,21 @@ class PlanetStrengthsScreen extends StatelessWidget {
           height: trackH,
           child: Align(
             alignment: Alignment.bottomCenter,
-            child: Container(
-              width: 11,
-              height: trackH * p.strength,
-              decoration: BoxDecoration(
-                gradient: AppColors.goldMeter,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.amber.withValues(alpha: 0.25),
-                    blurRadius: 6,
-                  ),
-                ],
+            child: Tooltip(
+              message: p.dignityLabel,
+              child: Container(
+                width: 11,
+                height: trackH * p.strength,
+                decoration: BoxDecoration(
+                  gradient: AppColors.goldMeter,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.amber.withValues(alpha: 0.25),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -201,19 +310,4 @@ class PlanetStrengthsScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Planet {
-  final String abbr;
-  final String name;
-  final double strength; // 0..1
-  final bool benefic;
-  const _Planet(this.abbr, this.name, this.strength, this.benefic);
-}
-
-class _Theme {
-  final IconData icon;
-  final String category;
-  final String description;
-  const _Theme(this.icon, this.category, this.description);
 }

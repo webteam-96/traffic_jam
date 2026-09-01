@@ -37,6 +37,8 @@ class ApiClient {
       _send('PUT', path, body: body, auth: auth);
   static Future<dynamic> patch(String path, {Object? body, bool auth = true}) =>
       _send('PATCH', path, body: body, auth: auth);
+  static Future<dynamic> delete(String path, {Object? body, bool auth = true}) =>
+      _send('DELETE', path, body: body, auth: auth);
 
   static Future<dynamic> _send(
     String method,
@@ -58,6 +60,7 @@ class ApiClient {
       'POST' => http.post(uri, headers: headers, body: encodedBody),
       'PUT' => http.put(uri, headers: headers, body: encodedBody),
       'PATCH' => http.patch(uri, headers: headers, body: encodedBody),
+      'DELETE' => http.delete(uri, headers: headers, body: encodedBody),
       _ => throw ArgumentError('Unsupported method $method'),
     };
 

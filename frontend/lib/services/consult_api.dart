@@ -40,4 +40,26 @@ class ConsultApi {
       body: {'text': text},
     ) as Map<String, dynamic>;
   }
+
+  /// Books a consultation request — POST /consult/appointments. Returns
+  /// `{appointmentId, reference}`.
+  static Future<Map<String, dynamic>> bookAppointment({
+    required String area,
+    required String email,
+    required String? message,
+    required DateTime preferredDate,
+    required int preferredHour24,
+    required int preferredMinute,
+  }) async {
+    return await ApiClient.post('/consult/appointments', body: {
+      'area': area,
+      'email': email,
+      'message': message,
+      'preferredDate': '${preferredDate.year.toString().padLeft(4, '0')}-'
+          '${preferredDate.month.toString().padLeft(2, '0')}-'
+          '${preferredDate.day.toString().padLeft(2, '0')}',
+      'preferredTime': '${preferredHour24.toString().padLeft(2, '0')}:'
+          '${preferredMinute.toString().padLeft(2, '0')}:00',
+    }) as Map<String, dynamic>;
+  }
 }

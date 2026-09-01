@@ -63,6 +63,14 @@ class UserApi {
     });
   }
 
+  /// Everything actually stored for this user — GET /me/export.
+  static Future<Map<String, dynamic>> exportData() async =>
+      await ApiClient.get('/me/export') as Map<String, dynamic>;
+
+  /// Permanently deletes the account and every row linked to it
+  /// (cascades server-side). Irreversible.
+  static Future<void> deleteAccount() => ApiClient.delete('/me');
+
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${_pad(d.month)}-${_pad(d.day)}';
 

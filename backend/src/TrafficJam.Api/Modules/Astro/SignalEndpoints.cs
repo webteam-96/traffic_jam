@@ -71,12 +71,23 @@ public static class SignalEndpoints
                 dasha.CurrentMaha.Lord, dasha.CurrentAntar.Lord,
                 jupiterHouseFromMoon, saturnHouseFromMoon, rahuHouseFromMoon, ketuHouseFromMoon);
 
-            db.DailySignals.Add(new DailySignal
+            var candidate = new DailySignal
             {
                 UserId = userId, Date = targetDate, Score = result.Score, Band = result.Band,
                 BreakdownJson = JsonSerializer.Serialize(result.Breakdown),
-            });
-            await db.SaveChangesAsync(ct);
+            };
+            db.DailySignals.Add(candidate);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Another concurrent request for this (user, date) already
+                // cached it first — e.g. the Home screen's Vibe Meter card and
+                // several detail screens all requesting "today" on first load.
+                // Our own computed result is just as valid; no need to re-read.
+            }
 
             return Results.Ok(BuildResponse(result.Score, result.Band, result.Breakdown));
         }).RequireAuthorization();

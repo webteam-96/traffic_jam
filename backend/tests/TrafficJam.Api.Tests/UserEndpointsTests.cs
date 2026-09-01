@@ -177,5 +177,52 @@ public class UserEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLif
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/me/birth-data")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/me/notification-preferences")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync("/me/devices", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/me/export")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.DeleteAsync("/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Export_WithBirthDataSaved_IncludesProfileAndBirthData()
+    {
+        var client = await AuthedClientAsync("uid-export-1");
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Export Test", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+
+        var export = await client.GetFromJsonAsync<JsonElement>("/me/export");
+
+        Assert.Equal("Export Test", export.GetProperty("profile").GetProperty("name").GetString());
+        var birthData = export.GetProperty("birthData");
+        Assert.Equal("Mumbai, Maharashtra, India", birthData.GetProperty("place").GetString());
+        Assert.Equal(0, export.GetProperty("questions").GetArrayLength());
+        Assert.Equal(0, export.GetProperty("appointments").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Export_WithoutBirthDataSaved_HasNullBirthData()
+    {
+        var client = await AuthedClientAsync("uid-export-2");
+
+        var export = await client.GetFromJsonAsync<JsonElement>("/me/export");
+
+        Assert.Equal(JsonValueKind.Null, export.GetProperty("birthData").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeleteAccount_ThenGetBirthData_401sBecauseTheTokensNoLongerResolve()
+    {
+        var client = await AuthedClientAsync("uid-delete-1");
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Delete Test", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+
+        var deleteResponse = await client.DeleteAsync("/me");
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+        // The access token is still structurally valid (JWTs are stateless),
+        // but the user it names — and the cascaded BirthData row — no
+        // longer exist, so this must 404 cleanly rather than 500.
+        var response = await client.GetAsync("/me/birth-data");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

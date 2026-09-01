@@ -3,16 +3,15 @@ import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/services/user_api.dart';
 import 'package:traffic_jam/services/api_client.dart';
-import 'package:traffic_jam/data/curated_cities.dart';
+import 'package:traffic_jam/data/world_cities.dart';
 import 'package:traffic_jam/nav.dart';
 
 /// Edit birth data — real form wired to GET/PUT /me/birth-data. Pushed
 /// screen, so it roots in DetailScaffold. Pops `true` on a successful save
 /// so Profile knows to reload.
 ///
-/// Place of birth uses a small curated city list (with embedded lat/lng/
-/// timezone) rather than the Google Places proxy — that needs a real API
-/// key that isn't configured yet (see backend/README.md).
+/// Place of birth searches a bundled ~34,000-city world dataset (real
+/// lat/lng/timezone, no Google Places API key needed).
 class EditBirthDataScreen extends StatefulWidget {
   const EditBirthDataScreen({super.key});
 
@@ -22,16 +21,17 @@ class EditBirthDataScreen extends StatefulWidget {
 
 class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   final _name = TextEditingController();
+  final _citySearch = TextEditingController();
   DateTime? _dob;
   int _hour = 6;
   int _minute = 0;
   bool _isAm = true;
   bool _unknownTime = false;
-  int? _selectedCity;
+  CityEntry? _selectedCity;
+  List<CityEntry> _allCities = const [];
+  List<CityEntry> _popularCities = const [];
   bool _loading = true;
   bool _saving = false;
-
-  static const _cities = kCuratedCities;
 
   @override
   void initState() {
@@ -42,13 +42,24 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _citySearch.dispose();
     super.dispose();
   }
 
+  List<CityEntry> get _filteredCities {
+    final q = _citySearch.text.trim();
+    if (q.isEmpty) return _popularCities;
+    return WorldCities.search(_allCities, q);
+  }
+
   Future<void> _load() async {
+    final cities = await WorldCities.load();
+    String? savedPlace;
+    double? savedLat, savedLng;
+    String? savedTz;
     try {
       final data = await UserApi.getBirthData();
-      if (data != null && mounted) {
+      if (data != null) {
         _name.text = data['name'] as String? ?? '';
         final dobParts = (data['dob'] as String).split('-');
         _dob = DateTime(
@@ -62,15 +73,43 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
           _isAm = h24 < 12;
           _hour = h24 % 12 == 0 ? 12 : h24 % 12;
         }
-        final place = data['place'] as String?;
-        final idx = _cities.indexWhere((c) => c.$1 == place);
-        if (idx != -1) _selectedCity = idx;
+        savedPlace = data['place'] as String?;
+        savedLat = (data['lat'] as num?)?.toDouble();
+        savedLng = (data['lng'] as num?)?.toDouble();
+        savedTz = data['timezone'] as String?;
       }
     } catch (_) {
       // No saved data yet (or a transient error) — the form just starts blank.
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
+    if (!mounted) return;
+    setState(() {
+      _allCities = cities;
+      _popularCities = cities.where((c) => c.country == 'India').take(8).toList();
+      if (savedPlace != null && savedLat != null && savedLng != null) {
+        // Prefer an exact dataset match (keeps it selectable from the same
+        // search results a fresh pick would use); fall back to a synthetic
+        // entry built from the saved fields so an existing selection is
+        // never silently dropped just because its display string doesn't
+        // match this dataset's naming.
+        CityEntry? match;
+        for (final c in cities) {
+          if (c.displayName == savedPlace) {
+            match = c;
+            break;
+          }
+        }
+        _selectedCity = match ??
+            CityEntry(
+              name: savedPlace,
+              state: '',
+              country: '',
+              lat: savedLat,
+              lng: savedLng,
+              timezone: savedTz ?? 'Asia/Kolkata',
+            );
+      }
+      _loading = false;
+    });
   }
 
   bool get _canSave => _dob != null && _selectedCity != null && !_saving;
@@ -113,7 +152,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
     if (!_canSave) return;
     setState(() => _saving = true);
     try {
-      final city = _cities[_selectedCity!];
+      final city = _selectedCity!;
       var hour24 = _hour % 12;
       if (!_isAm) hour24 += 12;
       await UserApi.saveBirthData(
@@ -122,10 +161,10 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
         hour24: _unknownTime ? null : hour24,
         minute: _unknownTime ? null : _minute,
         unknownTime: _unknownTime,
-        place: city.$1,
-        lat: city.$2,
-        lng: city.$3,
-        timezone: city.$4,
+        place: city.displayName,
+        lat: city.lat,
+        lng: city.lng,
+        timezone: city.timezone,
       );
       if (!mounted) return;
       toast(context, 'Birth data saved');
@@ -268,27 +307,67 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
           const SectionLabel('PLACE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          for (int i = 0; i < _cities.length; i++) ...[
-            GlassCard(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-              borderColor: i == _selectedCity ? AppColors.gold : AppColors.borderFaint,
-              onTap: () => setState(() => _selectedCity = i),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on,
-                      color: i == _selectedCity ? AppColors.gold : AppColors.textMuted),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(_cities[i].$1,
-                        style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
-                  ),
-                  if (i == _selectedCity)
-                    const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
-                ],
+          if (_selectedCity != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text('Current: ${_selectedCity!.displayName}',
+                  style: AppText.sans(size: 13, color: AppColors.textMuted)),
+            ),
+          TextField(
+            controller: _citySearch,
+            textCapitalization: TextCapitalization.words,
+            cursorColor: AppColors.gold,
+            style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Search your city',
+              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
+              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.gold),
+              filled: true,
+              fillColor: AppColors.bgDeep,
+              contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 16),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                borderSide: const BorderSide(color: AppColors.gold),
               ),
             ),
-            const SizedBox(height: AppSpacing.md),
-          ],
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (_filteredCities.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text('No cities match your search.', style: AppText.body),
+            )
+          else
+            for (final city in _filteredCities) ...[
+              GlassCard(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+                borderColor: city.displayName == _selectedCity?.displayName
+                    ? AppColors.gold
+                    : AppColors.borderFaint,
+                onTap: () => setState(() => _selectedCity = city),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on,
+                        color: city.displayName == _selectedCity?.displayName
+                            ? AppColors.gold
+                            : AppColors.textMuted),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(city.displayName,
+                          style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
+                    ),
+                    if (city.displayName == _selectedCity?.displayName)
+                      const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
           const SizedBox(height: AppSpacing.lg),
 
           GoldButton(

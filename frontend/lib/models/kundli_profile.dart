@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 
 /// A person whose birth chart can be viewed — either the signed-in user
 /// ("My Kundli") or someone generated via "Get Kundli" (family/friend).
-/// All fields are display strings; no backend/ephemeris exists yet.
+/// Most fields are display strings; a non-own profile also carries its real
+/// computed [chart]/[dasha] (from POST /chart/compute — see get_kundli_screen.dart),
+/// stored client-side only since there's no per-user "saved profiles" table
+/// on the backend yet.
 class KundliProfile {
   const KundliProfile({
     required this.id,
@@ -13,6 +16,9 @@ class KundliProfile {
     required this.tobUnknown,
     required this.place,
     required this.generatedOn,
+    this.chart,
+    this.dasha,
+    this.doshas,
   });
 
   final String id;
@@ -23,6 +29,9 @@ class KundliProfile {
   final bool tobUnknown;
   final String place;
   final String generatedOn;
+  final Map<String, dynamic>? chart;
+  final Map<String, dynamic>? dasha;
+  final Map<String, dynamic>? doshas;
 
   static const own = KundliProfile(
     id: 'own',

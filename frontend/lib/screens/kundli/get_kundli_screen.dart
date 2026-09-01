@@ -1,13 +1,18 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../models/kundli_profile.dart';
+import '../../data/world_cities.dart';
+import '../../services/chart_api.dart';
+import '../../services/api_client.dart';
+import '../../nav.dart';
 import '../details/kundli_screen.dart';
 
 /// Get Kundli — Business Flow §5.3. Capture a family member/friend's birth
-/// details, "generate" the chart (mocked delay), save it, then open it in
-/// the same Kundli detail screen used for "My Kundli".
+/// details, compute their real chart+Dasha via POST /chart/compute, save
+/// the result client-side (KundliStore — no per-user "saved profiles" table
+/// on the backend yet), then open it in the same Kundli detail screen used
+/// for "My Kundli".
 class GetKundliScreen extends StatefulWidget {
   const GetKundliScreen({super.key});
 
@@ -17,29 +22,41 @@ class GetKundliScreen extends StatefulWidget {
 
 class _GetKundliScreenState extends State<GetKundliScreen> {
   final _name = TextEditingController();
-  final _place = TextEditingController();
+  final _citySearch = TextEditingController();
 
   DateTime? _dob;
   int _hour = 6;
   int _minute = 0;
   bool _isAm = true;
   bool _tobUnknown = false;
-  int? _selectedCity;
+  CityEntry? _selectedCity;
+  List<CityEntry> _allCities = const [];
+  List<CityEntry> _popularCities = const [];
   bool _generating = false;
 
-  static const _cities = [
-    'Mumbai, Maharashtra, India',
-    'Delhi, India',
-    'Pune, Maharashtra, India',
-    'Bengaluru, Karnataka, India',
-    'Ahmedabad, Gujarat, India',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WorldCities.load().then((cities) {
+      if (!mounted) return;
+      setState(() {
+        _allCities = cities;
+        _popularCities = cities.where((c) => c.country == 'India').take(8).toList();
+      });
+    });
+  }
 
   @override
   void dispose() {
     _name.dispose();
-    _place.dispose();
+    _citySearch.dispose();
     super.dispose();
+  }
+
+  List<CityEntry> get _filteredCities {
+    final q = _citySearch.text.trim();
+    if (q.isEmpty) return _popularCities;
+    return WorldCities.search(_allCities, q);
   }
 
   bool get _canGenerate =>
@@ -84,24 +101,50 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
   Future<void> _generate() async {
     if (!_canGenerate) return;
     setState(() => _generating = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
+    final city = _selectedCity!;
+    var hour24 = _hour % 12;
+    if (!_isAm) hour24 += 12;
 
-    final profile = KundliProfile(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      name: _name.text.trim(),
-      isOwn: false,
-      dob: '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
-      tob: _tobUnknown ? '' : '${_pad(_hour)}:${_pad(_minute)} ${_isAm ? "AM" : "PM"}',
-      tobUnknown: _tobUnknown,
-      place: _cities[_selectedCity!],
-      generatedOn: 'just now',
-    );
-    KundliStore.add(profile);
+    try {
+      final computed = await ChartApi.compute(
+        dob: _dob!,
+        hour24: _tobUnknown ? null : hour24,
+        minute: _tobUnknown ? null : _minute,
+        unknownTime: _tobUnknown,
+        lat: city.lat,
+        lng: city.lng,
+        timezone: city.timezone,
+      );
+      if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => KundliScreen(profile: profile)),
-    );
+      final profile = KundliProfile(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: _name.text.trim(),
+        isOwn: false,
+        dob: '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
+        tob: _tobUnknown ? '' : '${_pad(_hour)}:${_pad(_minute)} ${_isAm ? "AM" : "PM"}',
+        tobUnknown: _tobUnknown,
+        place: city.displayName,
+        generatedOn: 'just now',
+        chart: computed['chart'] as Map<String, dynamic>,
+        dasha: computed['dasha'] as Map<String, dynamic>,
+        doshas: computed['doshas'] as Map<String, dynamic>?,
+      );
+      KundliStore.add(profile);
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => KundliScreen(profile: profile)),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _generating = false);
+      toast(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _generating = false);
+      toast(context, "Couldn't reach the server — check your connection.");
+    }
   }
 
   String _monthName(int m) => const [
@@ -226,7 +269,7 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
           const SectionLabel('PLACE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
           TextField(
-            controller: _place,
+            controller: _citySearch,
             cursorColor: AppColors.gold,
             style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
             decoration: InputDecoration(
@@ -245,29 +288,40 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
                 borderSide: const BorderSide(color: AppColors.gold),
               ),
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: AppSpacing.lg),
-          for (int i = 0; i < _cities.length; i++) ...[
-            GlassCard(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-              borderColor: i == _selectedCity ? AppColors.gold : AppColors.borderFaint,
-              onTap: () => setState(() => _selectedCity = i),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on,
-                      color: i == _selectedCity ? AppColors.gold : AppColors.textMuted),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(_cities[i],
-                        style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
-                  ),
-                  if (i == _selectedCity)
-                    const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
-                ],
+          if (_filteredCities.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text('No cities match your search.', style: AppText.body),
+            )
+          else
+            for (final city in _filteredCities) ...[
+              GlassCard(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+                borderColor: city.displayName == _selectedCity?.displayName
+                    ? AppColors.gold
+                    : AppColors.borderFaint,
+                onTap: () => setState(() => _selectedCity = city),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on,
+                        color: city.displayName == _selectedCity?.displayName
+                            ? AppColors.gold
+                            : AppColors.textMuted),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(city.displayName,
+                          style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
+                    ),
+                    if (city.displayName == _selectedCity?.displayName)
+                      const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-          ],
+              const SizedBox(height: AppSpacing.md),
+            ],
           const SizedBox(height: AppSpacing.lg),
 
           GoldButton(

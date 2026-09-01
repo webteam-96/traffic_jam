@@ -26,4 +26,31 @@ class ChartApi {
 
   static Future<Map<String, dynamic>> getDasha() async =>
       await ApiClient.get('/dasha') as Map<String, dynamic>;
+
+  /// Stateless chart+Dasha computation for someone other than the signed-in
+  /// user — "Get Kundli" for family/friends. Nothing is saved server-side;
+  /// returns `{chart: {...}, dasha: {...}}` in the exact same shapes as
+  /// [getChart]/[getDasha], computed fresh from the given birth details.
+  static Future<Map<String, dynamic>> compute({
+    required DateTime dob,
+    required int? hour24,
+    required int? minute,
+    required bool unknownTime,
+    required double lat,
+    required double lng,
+    required String timezone,
+  }) async {
+    final result = await ApiClient.post('/chart/compute', body: {
+      'dob': '${dob.year.toString().padLeft(4, '0')}-'
+          '${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}',
+      'tob': unknownTime || hour24 == null || minute == null
+          ? null
+          : '${hour24.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00',
+      'unknownTime': unknownTime,
+      'lat': lat,
+      'lng': lng,
+      'timezone': timezone,
+    }) as Map<String, dynamic>;
+    return result;
+  }
 }

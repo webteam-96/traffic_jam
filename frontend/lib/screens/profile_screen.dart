@@ -4,13 +4,15 @@ import '../theme/app_theme.dart';
 import '../nav.dart';
 import '../models/kundli_profile.dart';
 import '../services/user_api.dart';
+import '../services/chart_api.dart';
+import '../services/subscription_api.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'kundli/get_kundli_screen.dart';
 import 'details/kundli_screen.dart';
 import 'profile/privacy_screen.dart';
 import 'profile/edit_birth_data_screen.dart';
 
-// Figma node 1:397 — Profile tab ("Cosmic Identity"). Mock data inline.
+// Figma node 1:397 — Profile tab ("Cosmic Identity").
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -24,10 +26,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _birthData;
   bool _loadingBirthData = true;
 
+  // Astro Identity chips — null fields render as "—" (no chart yet, e.g. a
+  // brand new user who hasn't saved birth data).
+  String? _lagna, _moonSign, _sunSign, _nakshatra, _currentDasha;
+  bool _loadingAstro = true;
+
+  String? _planName;
+  bool _loadingPlan = true;
+
   @override
   void initState() {
     super.initState();
     _loadBirthData();
+    _loadAstroIdentity();
+    _loadPlan();
   }
 
   Future<void> _loadBirthData() async {
@@ -40,6 +52,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // fetch failure shouldn't block the rest of the Profile tab.
     } finally {
       if (mounted) setState(() => _loadingBirthData = false);
+    }
+  }
+
+  Future<void> _loadAstroIdentity() async {
+    try {
+      final results = await Future.wait([ChartApi.getChart(), ChartApi.getDasha()]);
+      final chart = results[0];
+      final dasha = results[1];
+      final d1 = (chart['d1'] as List).cast<Map<String, dynamic>>();
+      final sun = d1.where((p) => p['planet'] == 'Sun').firstOrNull;
+      final moon = d1.where((p) => p['planet'] == 'Moon').firstOrNull;
+      final maha = (dasha['maha'] as List).cast<Map<String, dynamic>>();
+      final currentMaha = maha.where((p) => p['current'] == true).firstOrNull;
+      final nakshatraRaw = chart['nakshatra'] as String? ?? '';
+      final nakParts = nakshatraRaw.split('-');
+      if (!mounted) return;
+      setState(() {
+        _lagna = (chart['ascendant'] as Map<String, dynamic>?)?['sign'] as String?;
+        _sunSign = sun?['sign'] as String?;
+        _moonSign = moon?['sign'] as String?;
+        _nakshatra = nakParts.length == 2 ? '${nakParts[0]} · Pada ${nakParts[1]}' : null;
+        _currentDasha = currentMaha?['lord'] as String?;
+      });
+    } catch (_) {
+      // No chart yet (birth data not saved) or a transient error — chips
+      // fall back to the "—" empty state.
+    } finally {
+      if (mounted) setState(() => _loadingAstro = false);
+    }
+  }
+
+  Future<void> _loadPlan() async {
+    try {
+      final results = await Future.wait([
+        SubscriptionApi.getSubscription(),
+        SubscriptionApi.getPlans(),
+      ]);
+      final current = results[0] as Map<String, dynamic>;
+      final plans = (results[1] as List).cast<Map<String, dynamic>>();
+      final tier = current['tier'];
+      final cycle = current['cycle'];
+      final match = plans.where((p) =>
+          p['tier'] == tier && (tier == 'Free' || p['cycle'] == cycle)).firstOrNull;
+      if (!mounted) return;
+      setState(() => _planName = match?['name'] as String? ?? tier as String?);
+    } catch (_) {
+      // Leave _planName null — the card falls back to a neutral label.
+    } finally {
+      if (mounted) setState(() => _loadingPlan = false);
     }
   }
 
@@ -86,17 +147,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const SectionLabel('ASTRO IDENTITY', color: AppColors.gold),
                 const SizedBox(height: AppSpacing.lg),
-                Wrap(
-                  spacing: AppSpacing.md,
-                  runSpacing: AppSpacing.md,
-                  children: const [
-                    _AstroChip('LAGNA', 'Leo'),
-                    _AstroChip('MOON SIGN', 'Taurus'),
-                    _AstroChip('SUN SIGN', 'Aquarius'),
-                    _AstroChip('NAKSHATRA', 'Krittika · Pada 3'),
-                    _AstroChip('CURRENT DASHA', 'Venus'),
-                  ],
-                ),
+                if (_loadingAstro)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+                    ),
+                  )
+                else if (_lagna == null)
+                  Text(
+                    'Save your birth details to reveal your astro identity.',
+                    style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.4),
+                  )
+                else
+                  Wrap(
+                    spacing: AppSpacing.md,
+                    runSpacing: AppSpacing.md,
+                    children: [
+                      _AstroChip('LAGNA', _lagna ?? '—'),
+                      _AstroChip('MOON SIGN', _moonSign ?? '—'),
+                      _AstroChip('SUN SIGN', _sunSign ?? '—'),
+                      _AstroChip('NAKSHATRA', _nakshatra ?? '—'),
+                      _AstroChip('CURRENT DASHA', _currentDasha ?? '—'),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -117,7 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SectionLabel('ACTIVE PLAN',
                               color: AppColors.gold),
                           const SizedBox(height: AppSpacing.sm),
-                          Text('Saga+ Monthly',
+                          Text(_loadingPlan ? 'Loading…' : (_planName ?? 'Free'),
                               style: AppText.serif(
                                   size: 26,
                                   weight: FontWeight.w500,

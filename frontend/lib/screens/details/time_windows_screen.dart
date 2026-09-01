@@ -1,33 +1,59 @@
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
+import '../../services/panchang_api.dart';
 
-/// Auspicious Time Windows — pushed detail screen. Lists today's favourable
-/// muhurats plus the inauspicious Rahu Kaal to avoid. Data mocked inline.
-class TimeWindowsScreen extends StatelessWidget {
+/// Auspicious/Inauspicious Time Windows — Rahu Kaal, Yamaganda and Gulika
+/// (all inauspicious, classically) to avoid, and Abhijit Muhurat (the one
+/// favourable window this Panchang computes) to favour. Wired to GET
+/// /panchang/today, which already computes all four.
+class TimeWindowsScreen extends StatefulWidget {
   const TimeWindowsScreen({super.key});
 
-  // ponytail: no interactivity in the spec → StatelessWidget, const data.
-  static const List<_Window> _windows = [
-    _Window(
-      range: '11:48 AM – 12:36 PM',
-      name: 'Abhijit Muhurat',
-      note: 'The victorious midday window — Sun at its zenith.',
-      activities: ['Meetings', 'Signing', 'Travel', 'Payments'],
-    ),
-    _Window(
-      range: '01:30 PM – 03:06 PM',
-      name: 'Amrit Kaal',
-      note: 'Nectar hour favouring growth and new beginnings.',
-      activities: ['Payments', 'Meetings', 'Travel'],
-    ),
-    _Window(
-      range: '05:12 PM – 06:00 PM',
-      name: 'Godhuli Bela',
-      note: 'Dusk twilight — gentle, grounding, good for closure.',
-      activities: ['Signing', 'Travel'],
-    ),
-  ];
+  @override
+  State<TimeWindowsScreen> createState() => _TimeWindowsScreenState();
+}
+
+class _TimeWindowsScreenState extends State<TimeWindowsScreen> {
+  Map<String, dynamic>? _panchang;
+  bool _loading = true;
+  bool _errored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final panchang = await PanchangApi.getToday();
+      if (!mounted) return;
+      setState(() {
+        _panchang = panchang;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
+    }
+  }
+
+  DateTime _parseUtc(String iso) => DateTime.parse(iso).toLocal();
+
+  String _formatTime(String iso) {
+    final t = _parseUtc(iso);
+    final hour12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final minute = t.minute.toString().padLeft(2, '0');
+    final meridiem = t.hour < 12 ? 'AM' : 'PM';
+    return '${hour12.toString().padLeft(2, '0')}:$minute $meridiem';
+  }
+
+  String _range(Map<String, dynamic> window) =>
+      '${_formatTime(window['start'] as String)} – ${_formatTime(window['end'] as String)}';
 
   @override
   Widget build(BuildContext context) {
@@ -36,25 +62,57 @@ class TimeWindowsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionLabel('AVOID THIS PERIOD'),
-          const SizedBox(height: AppSpacing.md),
-          _rahuKaalCard(),
-          const SizedBox(height: AppSpacing.section),
-          const SectionLabel('FAVOURABLE MUHURATS'),
-          const SizedBox(height: AppSpacing.md),
-          Text('Today\'s Green Lights',
-              style: AppText.serif(size: 24, color: AppColors.textPrimary)),
-          const SizedBox(height: AppSpacing.xl),
-          for (final w in _windows) ...[
-            _WindowCard(window: w),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              child: Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+              ),
+            )
+          else if (_errored || _panchang == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              child: Text("Couldn't load today's Panchang — check your connection.",
+                  style: AppText.body),
+            )
+          else ...[
+            const SectionLabel('AVOID THESE PERIODS'),
+            const SizedBox(height: AppSpacing.md),
+            _rahuKaalCard(_panchang!['rahuKaal'] as Map<String, dynamic>),
             const SizedBox(height: AppSpacing.lg),
+            _AvoidRow(
+              icon: Icons.hourglass_bottom,
+              name: 'Yamaganda',
+              range: _range(_panchang!['yamaganda'] as Map<String, dynamic>),
+              note: "Yama's shadow period — avoid starting anything new.",
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _AvoidRow(
+              icon: Icons.hourglass_bottom,
+              name: 'Gulika Kaal',
+              range: _range(_panchang!['gulika'] as Map<String, dynamic>),
+              note: 'A minor inauspicious window — favour routine tasks only.',
+            ),
+            const SizedBox(height: AppSpacing.section),
+            const SectionLabel('FAVOURABLE MUHURAT'),
+            const SizedBox(height: AppSpacing.md),
+            Text("Today's Green Light",
+                style: AppText.serif(size: 24, color: AppColors.textPrimary)),
+            const SizedBox(height: AppSpacing.xl),
+            _WindowCard(
+              range: _range(_panchang!['abhijit'] as Map<String, dynamic>),
+              name: 'Abhijit Muhurat',
+              note: 'The victorious midday window — Sun at its zenith.',
+              activities: const ['Meetings', 'Signing', 'Travel', 'Payments'],
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _rahuKaalCard() {
+  Widget _rahuKaalCard(Map<String, dynamic> rahuKaal) {
     return GlassCard(
       fill: AppColors.critical,
       fillOpacity: 0.18,
@@ -94,7 +152,7 @@ class TimeWindowsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text('09:00 – 10:30 AM',
+          Text(_range(rahuKaal),
               style: AppText.serif(
                 size: 32,
                 weight: FontWeight.w700,
@@ -114,8 +172,53 @@ class TimeWindowsScreen extends StatelessWidget {
   }
 }
 
-class _Window {
-  const _Window({
+class _AvoidRow extends StatelessWidget {
+  const _AvoidRow({
+    required this.icon,
+    required this.name,
+    required this.range,
+    required this.note,
+  });
+
+  final IconData icon;
+  final String name;
+  final String range;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      fill: AppColors.surfaceRaised,
+      fillOpacity: 0.5,
+      borderColor: AppColors.surfaceRaised3,
+      radius: AppRadius.md,
+      child: Row(
+        children: [
+          IconChip(child: Icon(icon, size: 18, color: AppColors.criticalText)),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: AppText.cardTitle),
+                const SizedBox(height: AppSpacing.xs),
+                Text(note,
+                    style: AppText.sans(size: 12, color: AppColors.textTan, height: 1.5)),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Text(range,
+              style: AppText.sans(
+                  size: 13, weight: FontWeight.w600, color: AppColors.criticalText)),
+        ],
+      ),
+    );
+  }
+}
+
+class _WindowCard extends StatelessWidget {
+  const _WindowCard({
     required this.range,
     required this.name,
     required this.note,
@@ -126,12 +229,6 @@ class _Window {
   final String name;
   final String note;
   final List<String> activities;
-}
-
-class _WindowCard extends StatelessWidget {
-  const _WindowCard({required this.window});
-
-  final _Window window;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +245,7 @@ class _WindowCard extends StatelessWidget {
               Icon(Icons.wb_twilight, size: 18, color: AppColors.gold),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: Text(window.range,
+                child: Text(range,
                     style: AppText.serif(
                       size: 20,
                       weight: FontWeight.w700,
@@ -158,10 +255,10 @@ class _WindowCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(window.name,
+          Text(name,
               style: AppText.serif(size: 18, color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.xs),
-          Text(window.note,
+          Text(note,
               style: AppText.sans(
                   size: 13, color: AppColors.textTan, height: 1.5)),
           const SizedBox(height: AppSpacing.lg),
@@ -169,7 +266,7 @@ class _WindowCard extends StatelessWidget {
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
             children: [
-              for (final a in window.activities) _activityChip(a),
+              for (final a in activities) _activityChip(a),
             ],
           ),
         ],
