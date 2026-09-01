@@ -1,0 +1,89 @@
+/* Design tokens — premium light theme: white canvas, violet as the
+   interactive accent, gold reserved for value/premium signals (mirrors
+   the mobile app's gold, frontend/lib/theme/app_theme.dart). */
+:root {
+  /* Canvas */
+  --bg: #ffffff;
+  --bg-soft: #faf9fd;
+  --bg-shell: #f6f4fb;
+
+  /* Violet — the interactive/brand accent */
+  --violet-50: #f5f1fc;
+  --violet-100: #ece3fa;
+  --violet-200: #d9c9f4;
+  --violet-300: #bda3ea;
+  --violet-400: #9d78de;
+  --violet-500: #7c4fd1;
+  --violet-600: #6935bd;
+  --violet-700: #56289b;
+  --violet-800: #3c1c6e;
+  --violet-900: #241145;
+
+  /* Sidebar — deep violet, not black, so "white theme" reads as premium
+     contrast rather than flat/blank */
+  --sidebar-bg: linear-gradient(190deg, #2c1652 0%, #1c0f38 100%);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-text: #c7b8e8;
+  --sidebar-text-dim: #8b7aab;
+
+  /* Surfaces */
+  --surface: #ffffff;
+  --surface-alt: var(--violet-50);
+  --border: #ece7f6;
+  --border-strong: #ddd4ee;
+
+  /* Gold — reserved for value/premium signals, not general UI */
+  --gold: #c9971e;
+  --gold-deep: #a97c12;
+  --gold-bright: #ffc121;
+  --gold-bg: #fdf5e2;
+  --gold-border: #f0dfae;
+  --gradient-gold: linear-gradient(135deg, #f4c94f, #c9971e);
+
+  /* Text */
+  --text-primary: #1c1430;
+  --text-secondary: #6b6280;
+  --text-tertiary: #a89fbd;
+  --text-on-violet: #ffffff;
+  --text-on-gold: #3c2c00;
+
+  /* Status */
+  --success: #158a52;
+  --success-bg: #e9f9f0;
+  --critical: #c0293e;
+  --critical-bg: #fdedef;
+  --pending: var(--gold-deep);
+  --pending-bg: var(--gold-bg);
+
+  /* Gradients */
+  --gradient-violet: linear-gradient(135deg, var(--violet-500), var(--violet-700));
+  --gradient-hero: linear-gradient(135deg, #f9f6ff 0%, #fdf9f0 100%);
+
+  /* Shadows — soft, premium, never harsh */
+  --shadow-sm: 0 1px 2px rgba(28, 20, 48, 0.04);
+  --shadow-md: 0 4px 16px rgba(60, 28, 110, 0.06);
+  --shadow-lg: 0 12px 40px rgba(60, 28, 110, 0.1);
+  --shadow-violet: 0 8px 20px rgba(105, 53, 189, 0.22);
+  --shadow-gold: 0 6px 16px rgba(201, 151, 30, 0.25);
+
+  /* Type */
+  --font-serif: "Libre Caslon Text", Georgia, serif;
+  --font-logo: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Spacing */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 20px;
+  --sp-xxl: 24px;
+  --sp-section: 32px;
+
+  /* Radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+}

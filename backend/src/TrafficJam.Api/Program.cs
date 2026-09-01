@@ -9,6 +9,8 @@ using TrafficJam.Api.Modules.Users;
 using TrafficJam.Api.Modules.Notifications;
 using TrafficJam.Api.Modules.Consultation;
 using TrafficJam.Api.Modules.Astro;
+using TrafficJam.Api.Modules.Remedies;
+using TrafficJam.Api.Modules.Admin;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -101,7 +103,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.FromSeconds(30),
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Admin-panel endpoints require this claim; a regular consumer JWT
+    // (see JwtService.IssueAccessToken) never carries it, and an admin JWT
+    // (IssueAdminAccessToken) always does — the two token kinds are mutually
+    // exclusive by construction, not just by convention.
+    options.AddPolicy("AdminOnly", policy => policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "admin"));
+});
 
 // ── Users ────────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient<IPlacesClient, GooglePlacesClient>();
@@ -121,6 +130,7 @@ builder.Services.AddSingleton<ITransitService, TransitService>();
 builder.Services.AddSingleton<ITrafficSignalService, TrafficSignalService>();
 builder.Services.AddSingleton<IPlacidusHouseCalculator, PlacidusHouseCalculator>();
 builder.Services.AddSingleton<IKpService, KpService>();
+builder.Services.AddSingleton<IDoshaService, DoshaService>();
 
 var app = builder.Build();
 
@@ -157,6 +167,15 @@ app.MapPanchangEndpoints();
 app.MapTransitEndpoints();
 app.MapSignalEndpoints();
 app.MapChartEndpoints();
+app.MapRemedyEndpoints();
+app.MapDoshaEndpoints();
+app.MapAdminAuthEndpoints();
+app.MapAdminDashboardEndpoints();
+app.MapAdminUserEndpoints();
+app.MapAdminQuestionEndpoints();
+app.MapAdminAppointmentEndpoints();
+app.MapAdminRemedyEndpoints();
+app.MapAdminPlanEndpoints();
 
 app.Run();
 

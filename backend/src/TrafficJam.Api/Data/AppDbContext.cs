@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TrafficJam.Api.Data.Entities;
 using TrafficJam.Api.Infrastructure;
+using TrafficJam.Api.Modules.Remedies;
 
 namespace TrafficJam.Api.Data;
 
@@ -28,6 +29,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
     public DbSet<Entities.Notification> Notifications => Set<Entities.Notification>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
+    public DbSet<ConsultPlanRow> ConsultPlanRows => Set<ConsultPlanRow>();
+    public DbSet<SubscriptionPlanRow> SubscriptionPlanRows => Set<SubscriptionPlanRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -175,6 +180,55 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
             e.HasOne(n => n.User).WithMany(u => u.Notifications)
                 .HasForeignKey(n => n.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Appointment>(e =>
+        {
+            e.Property(a => a.Status).HasConversion<string>();
+            e.HasOne(a => a.User).WithMany(u => u.Appointments)
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RemedyContent>().HasData(RemedySeedData.All);
+
+        modelBuilder.Entity<AdminUser>(e =>
+        {
+            e.HasIndex(a => a.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<ConsultPlanRow>().HasData(
+            new ConsultPlanRow { Id = "standard", Name = "Standard", PriceRupees = 99, SlaHours = 4 },
+            new ConsultPlanRow { Id = "priority", Name = "Priority", PriceRupees = 299, SlaHours = 1 });
+
+        modelBuilder.Entity<SubscriptionPlanRow>().HasData(
+            new SubscriptionPlanRow
+            {
+                Id = "free", Name = "Free", Tier = "Free", Cycle = "None", PriceRupees = 0,
+                FeaturesJson = "[\"Daily Traffic Signal\",\"Basic Panchang\"]",
+            },
+            new SubscriptionPlanRow
+            {
+                Id = "saga_plus_monthly", Name = "Saga+ Monthly", Tier = "SagaPlus", Cycle = "Monthly", PriceRupees = 299,
+                FeaturesJson = "[\"Deep-space transits\",\"Unlimited Panchang\",\"Priority Ask Jay\"]",
+            },
+            new SubscriptionPlanRow
+            {
+                Id = "saga_plus_annual", Name = "Saga+ Annual", Tier = "SagaPlus", Cycle = "Yearly", PriceRupees = 2999,
+                FeaturesJson = "[\"Deep-space transits\",\"Unlimited Panchang\",\"Priority Ask Jay\",\"2 months free\"]",
+            });
+
+        // Dev-only bootstrap login — email admin@trafficjam.life, password
+        // "TrafficJam2026!" (see backend/README.md). Change or remove this
+        // account before any real deployment; it exists only so the admin
+        // panel has *something* to log in with out of the box.
+        modelBuilder.Entity<AdminUser>().HasData(new AdminUser
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            Email = "admin@trafficjam.life",
+            Name = "Traffic Jam Admin",
+            PasswordHash = "210000.sBvGgNG4BNIZo1TOLt0P1w==.D8IqhFYqaSICrUItAR/LrOUjll5Rjayp7mZtdppxldE=",
+            CreatedAt = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         });
     }
 }

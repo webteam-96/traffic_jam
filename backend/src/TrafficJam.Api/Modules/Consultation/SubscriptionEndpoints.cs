@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Data.Entities;
@@ -14,7 +15,11 @@ public static class SubscriptionEndpoints
 {
     public static void MapSubscriptionEndpoints(this WebApplication app)
     {
-        app.MapGet("/subscription/plans", () => Results.Ok(Plans.SubscriptionPlans)).AllowAnonymous();
+        app.MapGet("/subscription/plans", async (AppDbContext db, CancellationToken ct) =>
+        {
+            var plans = await db.SubscriptionPlanRows.OrderBy(p => p.PriceRupees).ToListAsync(ct);
+            return Results.Ok(plans.Select(ToPlanJson));
+        }).AllowAnonymous();
 
         var sub = app.MapGroup("/subscription").RequireAuthorization();
 
@@ -23,16 +28,17 @@ public static class SubscriptionEndpoints
             var record = await db.Subscriptions.SingleOrDefaultAsync(s => s.UserId == principal.UserId(), ct);
             record ??= new Subscription { UserId = principal.UserId() };
 
-            var plan = Plans.SubscriptionPlans.FirstOrDefault(p => p.Tier == record.Tier.ToString());
+            var plan = await db.SubscriptionPlanRows.FirstOrDefaultAsync(p => p.Tier == record.Tier.ToString(), ct);
+            var features = plan is null ? [] : JsonSerializer.Deserialize<string[]>(plan.FeaturesJson)!;
             return Results.Ok(new SubscriptionResponse(
-                record.Tier.ToString(), record.Cycle.ToString(), record.RenewsAt, plan?.Features ?? []));
+                record.Tier.ToString(), record.Cycle.ToString(), record.RenewsAt, features));
         });
 
-        sub.MapPost("/checkout", async (CheckoutRequest request, IPaymentGateway gateway, CancellationToken ct) =>
-            await CreateOrderOrCleanErrorAsync(gateway, request.PlanId, ct));
+        sub.MapPost("/checkout", async (CheckoutRequest request, IPaymentGateway gateway, AppDbContext db, CancellationToken ct) =>
+            await CreateOrderOrCleanErrorAsync(gateway, db, request.PlanId, ct));
 
-        app.MapPost("/payments/checkout", async (CheckoutRequest request, IPaymentGateway gateway, CancellationToken ct) =>
-            await CreateOrderOrCleanErrorAsync(gateway, request.PlanId, ct)).RequireAuthorization();
+        app.MapPost("/payments/checkout", async (CheckoutRequest request, IPaymentGateway gateway, AppDbContext db, CancellationToken ct) =>
+            await CreateOrderOrCleanErrorAsync(gateway, db, request.PlanId, ct)).RequireAuthorization();
 
         sub.MapPost("/verify", async (
             VerifyRequest request, System.Security.Claims.ClaimsPrincipal principal,
@@ -55,7 +61,7 @@ public static class SubscriptionEndpoints
                     statusCode: StatusCodes.Status402PaymentRequired);
             }
 
-            var plan = Plans.SubscriptionPlans.SingleOrDefault(p => p.Id == request.PlanId);
+            var plan = await db.SubscriptionPlanRows.SingleOrDefaultAsync(p => p.Id == request.PlanId, ct);
             if (plan is null)
             {
                 return Results.Json(new { error = new { code = "UNKNOWN_PLAN", message = $"No plan '{request.PlanId}'." } },
@@ -80,9 +86,16 @@ public static class SubscriptionEndpoints
         });
     }
 
-    private static async Task<IResult> CreateOrderOrCleanErrorAsync(IPaymentGateway gateway, string planId, CancellationToken ct)
+    private static object ToPlanJson(SubscriptionPlanRow p) => new
     {
-        var plan = Plans.SubscriptionPlans.SingleOrDefault(p => p.Id == planId);
+        p.Id, p.Name, p.Tier, p.Cycle, p.PriceRupees,
+        Features = JsonSerializer.Deserialize<string[]>(p.FeaturesJson),
+    };
+
+    private static async Task<IResult> CreateOrderOrCleanErrorAsync(
+        IPaymentGateway gateway, AppDbContext db, string planId, CancellationToken ct)
+    {
+        var plan = await db.SubscriptionPlanRows.SingleOrDefaultAsync(p => p.Id == planId, ct);
         if (plan is null)
         {
             return Results.Json(new { error = new { code = "UNKNOWN_PLAN", message = $"No plan '{planId}'." } },

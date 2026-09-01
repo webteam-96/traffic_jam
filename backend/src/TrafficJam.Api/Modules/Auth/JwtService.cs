@@ -46,6 +46,28 @@ public class JwtService : IJwtService
         return _handler.CreateToken(descriptor);
     }
 
+    public string IssueAdminAccessToken(AdminUser admin)
+    {
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = _issuer,
+            Audience = _audience,
+            Subject = new ClaimsIdentity([
+                new Claim(ClaimTypes.NameIdentifier, admin.Id.ToString()),
+                // The JWT bearer handler's default inbound claim mapping
+                // renames a plain "role" claim type to this same long URI on
+                // the way in, so the token is issued with it directly rather
+                // than relying on that rename happening correctly.
+                new Claim(ClaimTypes.Role, "admin"),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            ]),
+            Expires = DateTime.UtcNow.AddMinutes(_accessTokenMinutes),
+            SigningCredentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256),
+        };
+
+        return _handler.CreateToken(descriptor);
+    }
+
     public RefreshTokenIssued IssueRefreshToken()
     {
         var raw = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));

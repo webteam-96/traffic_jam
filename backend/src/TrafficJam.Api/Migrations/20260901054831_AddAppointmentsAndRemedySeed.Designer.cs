@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TrafficJam.Api.Data;
 
@@ -11,9 +12,11 @@ using TrafficJam.Api.Data;
 namespace TrafficJam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901054831_AddAppointmentsAndRemedySeed")]
+    partial class AddAppointmentsAndRemedySeed
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,45 +24,6 @@ namespace TrafficJam.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
-
-            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AdminUser", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
-
-                    b.ToTable("AdminUsers");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("00000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTime(2026, 9, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "admin@trafficjam.life",
-                            Name = "Traffic Jam Admin",
-                            PasswordHash = "210000.sBvGgNG4BNIZo1TOLt0P1w==.D8IqhFYqaSICrUItAR/LrOUjll5Rjayp7mZtdppxldE="
-                        });
-                });
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.Appointment", b =>
                 {
@@ -187,42 +151,6 @@ namespace TrafficJam.Api.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("Charts");
-                });
-
-            modelBuilder.Entity("TrafficJam.Api.Data.Entities.ConsultPlanRow", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<long>("PriceRupees")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("SlaHours")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ConsultPlanRows");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = "standard",
-                            Name = "Standard",
-                            PriceRupees = 99L,
-                            SlaHours = 4
-                        },
-                        new
-                        {
-                            Id = "priority",
-                            Name = "Priority",
-                            PriceRupees = 299L,
-                            SlaHours = 1
-                        });
                 });
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.DailySignal", b =>
@@ -807,64 +735,6 @@ namespace TrafficJam.Api.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("Subscriptions");
-                });
-
-            modelBuilder.Entity("TrafficJam.Api.Data.Entities.SubscriptionPlanRow", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("Cycle")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("FeaturesJson")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<long>("PriceRupees")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Tier")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SubscriptionPlanRows");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = "free",
-                            Cycle = "None",
-                            FeaturesJson = "[\"Daily Traffic Signal\",\"Basic Panchang\"]",
-                            Name = "Free",
-                            PriceRupees = 0L,
-                            Tier = "Free"
-                        },
-                        new
-                        {
-                            Id = "saga_plus_monthly",
-                            Cycle = "Monthly",
-                            FeaturesJson = "[\"Deep-space transits\",\"Unlimited Panchang\",\"Priority Ask Jay\"]",
-                            Name = "Saga+ Monthly",
-                            PriceRupees = 299L,
-                            Tier = "SagaPlus"
-                        },
-                        new
-                        {
-                            Id = "saga_plus_annual",
-                            Cycle = "Yearly",
-                            FeaturesJson = "[\"Deep-space transits\",\"Unlimited Panchang\",\"Priority Ask Jay\",\"2 months free\"]",
-                            Name = "Saga+ Annual",
-                            PriceRupees = 2999L,
-                            Tier = "SagaPlus"
-                        });
                 });
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.User", b =>

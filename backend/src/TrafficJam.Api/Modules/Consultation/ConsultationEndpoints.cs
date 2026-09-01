@@ -13,19 +13,48 @@ public record QuestionSummary(Guid Id, string Domain, string Question, string St
 public record SendMessageRequest(string Text);
 public record MessageResponse(Guid Id, string Sender, string Text, DateTime CreatedAt);
 
+public record BookAppointmentRequest(
+    string Area, string Email, string? Message, DateOnly PreferredDate, TimeOnly PreferredTime);
+public record BookAppointmentResponse(Guid AppointmentId, string Reference);
+
 public static class ConsultationEndpoints
 {
     public static void MapConsultationEndpoints(this WebApplication app)
     {
-        app.MapGet("/consult/plans", () => Results.Ok(Plans.ConsultPlans)).AllowAnonymous();
+        app.MapGet("/consult/plans", async (AppDbContext db, CancellationToken ct) =>
+            Results.Ok(await db.ConsultPlanRows.OrderBy(p => p.PriceRupees).ToListAsync(ct))).AllowAnonymous();
 
         var consult = app.MapGroup("/consult").RequireAuthorization();
+
+        // "Book Appointment" — Business Flow §9. Records the request as
+        // Pending; the admin panel (Modules/Admin/AdminAppointmentEndpoints.cs)
+        // is where staff see the queue and move it to Confirmed/Completed/
+        // Cancelled. The Reference lets the user look it up on their side.
+        consult.MapPost("/appointments", async (
+            BookAppointmentRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
+            CancellationToken ct) =>
+        {
+            var appointment = new Appointment
+            {
+                UserId = principal.UserId(),
+                Area = request.Area,
+                Email = request.Email,
+                Message = request.Message,
+                PreferredDate = request.PreferredDate,
+                PreferredTime = request.PreferredTime,
+            };
+            db.Appointments.Add(appointment);
+            await db.SaveChangesAsync(ct);
+
+            var reference = $"TJ-{appointment.Id.ToString("N")[..8].ToUpperInvariant()}";
+            return Results.Ok(new BookAppointmentResponse(appointment.Id, reference));
+        });
 
         consult.MapPost("/questions", async (
             AskQuestionRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
             IPanchangService panchangService, ITransitService transitService, CancellationToken ct) =>
         {
-            var plan = Plans.ConsultPlans.SingleOrDefault(p => p.Id == request.PlanId);
+            var plan = await db.ConsultPlanRows.SingleOrDefaultAsync(p => p.Id == request.PlanId, ct);
             if (plan is null)
             {
                 return Results.Json(new { error = new { code = "UNKNOWN_PLAN", message = $"No plan '{request.PlanId}'." } },
@@ -35,6 +64,17 @@ public static class ConsultationEndpoints
             var userId = principal.UserId();
             var contextJson = await BuildContextSnapshotAsync(db, userId, panchangService, transitService, ct);
 
+            // "Priority Ask Jay" (Saga+ feature copy) — a subscriber's
+            // questions always get the fastest SLA any consult plan offers,
+            // regardless of which (possibly free/standard) plan they picked,
+            // instead of needing to separately pay per-question for it.
+            var slaHours = plan.SlaHours;
+            if (await db.HasSagaPlusAsync(userId, ct))
+            {
+                var bestSlaHours = await db.ConsultPlanRows.MinAsync(p => p.SlaHours, ct);
+                slaHours = Math.Min(slaHours, bestSlaHours);
+            }
+
             var question = new Question
             {
                 UserId = userId,
@@ -42,7 +82,7 @@ public static class ConsultationEndpoints
                 Text = request.Question,
                 ContextJson = contextJson,
                 Plan = plan.Id,
-                SlaAt = DateTime.UtcNow.AddHours(plan.SlaHours),
+                SlaAt = DateTime.UtcNow.AddHours(slaHours),
             };
             db.Questions.Add(question);
             await db.SaveChangesAsync(ct);
