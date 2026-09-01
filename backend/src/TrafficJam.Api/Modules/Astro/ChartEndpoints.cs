@@ -5,6 +5,8 @@ using TrafficJam.Api.Infrastructure;
 
 namespace TrafficJam.Api.Modules.Astro;
 
+public record ComputeChartRequest(DateOnly Dob, TimeOnly? Tob, bool UnknownTime, double Lat, double Lng, string Timezone);
+
 /// <summary>
 /// `GET /chart` and `GET /dasha` — read-only access to the chart/Dasha data
 /// `PUT /me/birth-data` already computes and stores. Neither existed before
@@ -59,7 +61,89 @@ public static class ChartEndpoints
             };
             return Results.Ok(response);
         }).RequireAuthorization();
+
+        // Stateless chart+Dasha computation for a birth date/time/place that
+        // isn't the signed-in user's own — "Get Kundli" for family/friends
+        // (BACKEND_REQUIREMENTS.md §5.3). Nothing is persisted: no
+        // BirthData/Chart/Dasha row is written, so this can't collide with
+        // (or overwrite) the user's own saved birth data. Returns the same
+        // `chart`/`dasha` field shapes as GET /chart and GET /dasha so the
+        // frontend can reuse identical parsing/rendering code for both.
+        app.MapPost("/chart/compute", (
+            ComputeChartRequest request, IAstroEngineService astroEngine, IKpService kpService,
+            IDashaService dashaService, IDoshaService doshaService) =>
+        {
+            var timeKnown = !request.UnknownTime && request.Tob is not null;
+            var localDateTime = request.Dob.ToDateTime(request.Tob ?? new TimeOnly(12, 0));
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(request.Timezone);
+            var birthUtc = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
+
+            var result = astroEngine.ComputeBirthChart(birthUtc, request.Lat, request.Lng, timeKnown);
+
+            object kpJson = Array.Empty<object>();
+            object cuspJson = Array.Empty<object>();
+            if (timeKnown)
+            {
+                var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), request.Lat, request.Lng, result.D1);
+                kpJson = kpChart.Planets;
+                cuspJson = kpChart.Cusps;
+            }
+
+            var chartResponse = new
+            {
+                ayanamsa = result.AyanamsaDegrees.ToString("F4"),
+                nakshatra = $"{result.MoonNakshatra.Name}-{result.MoonNakshatra.Pada}",
+                computedAt = DateTime.UtcNow,
+                ascendant = new
+                {
+                    tropicalLongitude = result.AscendantTropicalLongitude,
+                    siderealLongitude = result.AscendantSiderealLongitude,
+                    signIndex = result.AscendantSignIndex,
+                    sign = result.AscendantSignIndex is int ascSign ? VedicMath.SignNames[ascSign] : null,
+                    known = timeKnown,
+                },
+                d1 = result.D1,
+                d9 = result.D9,
+                d10 = result.D10,
+                d60 = result.D60 ?? (object)Array.Empty<object>(),
+                moonChart = result.MoonChart,
+                kp = kpJson,
+                cusps = cuspJson,
+            };
+
+            var moonPosition = result.D1.Single(p => p.Planet == "Moon");
+            var moonSiderealLongitude = moonPosition.SignIndex * 30.0 + moonPosition.DegreeInSign;
+            var asOfUtc = DateTime.UtcNow;
+            var dashaResult = dashaService.Compute(birthUtc, moonSiderealLongitude, asOfUtc);
+
+            var dashaResponse = new
+            {
+                validMonth = new DateOnly(asOfUtc.Year, asOfUtc.Month, 1),
+                maha = SerializeDashaPeriods(dashaResult.MahaTimeline, dashaResult.CurrentMaha, asOfUtc),
+                antar = SerializeDashaPeriods(dashaResult.CurrentAntarList, dashaResult.CurrentAntar, asOfUtc),
+                pratyantar = SerializeDashaPeriods(dashaResult.CurrentPratyantarList, null, asOfUtc),
+            };
+
+            var natalDoshas = doshaService.ComputeNatalDoshas(result.D1, result.AscendantSignIndex);
+            var moonSignIndex = moonPosition.SignIndex;
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTime.UtcNow, tz));
+            var sadeSati = doshaService.ComputeSadeSati(moonSignIndex, today);
+            var doshaResponse = new { mangal = natalDoshas.Mangal, kaalSarp = natalDoshas.KaalSarp, sadeSati };
+
+            return Results.Ok(new { chart = chartResponse, dasha = dashaResponse, doshas = doshaResponse });
+        }).RequireAuthorization();
     }
+
+    private static IEnumerable<object> SerializeDashaPeriods(
+        IReadOnlyList<DashaPeriod> periods, DashaPeriod? current, DateTime asOfUtc) =>
+        periods.Select(p => new
+        {
+            lord = p.Lord,
+            start = p.Start,
+            end = p.End,
+            current = ReferenceEquals(p, current) || (asOfUtc >= p.Start && asOfUtc < p.End),
+        });
 
     private record StoredPeriod(string Lord, DateTime Start, DateTime End);
 

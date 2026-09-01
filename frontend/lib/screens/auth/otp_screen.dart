@@ -73,9 +73,7 @@ class _OtpScreenState extends State<OtpScreen> {
     try {
       await AuthService.loginWithDevOtp('+91${widget.phoneNumber}', _code);
       if (!mounted) return;
-      // AuthService.state has already flipped to loggedIn — pop back to the
-      // root route so main.dart's _RootGate renders Welcome/Shell for it.
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      goToPostLogin(context);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _verifying = false);

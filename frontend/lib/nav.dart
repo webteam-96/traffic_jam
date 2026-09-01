@@ -150,6 +150,23 @@ void goToLogin(BuildContext context) {
   );
 }
 
+/// After a successful OTP verify — AuthService.state has already flipped to
+/// loggedIn. Explicitly lands on Welcome (onboarding incomplete) or the main
+/// Shell, clearing the stack, rather than popping back to "first" and
+/// trusting main.dart's _RootGate is still mounted underneath to react to
+/// the new auth state — it isn't, once the user has ever signed out
+/// (goToLogin, above) or finished onboarding (goToShell, below), both of
+/// which already replace the entire stack with a screen that isn't
+/// _RootGate. Without this, verifying OTP after a sign-out just re-reveals
+/// goToLogin's own static LoginScreen instead of continuing in.
+void goToPostLogin(BuildContext context) {
+  final onboardingComplete = AuthService.state.value.onboardingComplete;
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => onboardingComplete ? const AppShell() : const WelcomeScreen()),
+    (route) => false,
+  );
+}
+
 // ── Named flow hops (so each screen imports only nav.dart) ───────────────────
 // Onboarding / auth chain
 void goToOtp(BuildContext c, {String phoneNumber = ''}) =>

@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import '../../nav.dart';
 import '../../models/kundli_profile.dart';
 import '../../services/chart_api.dart';
+import '../../services/dosha_api.dart';
 import '../../services/api_client.dart';
 import 'dasha_timeline_screen.dart';
 
@@ -51,10 +52,10 @@ Map<String, dynamic>? _currentOf(List<dynamic> periods) {
 /// Kundli detail — Business Flow §5.2. Six sections behind one top-level
 /// PillToggle: Planet, Vimshottari Dasha, Charts (D1/D9/D10/D60 selector,
 /// North/South style toggle), KP System, Cusp Chart. Works for the user's own
-/// chart (`profile` omitted) or a generated one (family/friend). Only "My
-/// Kundli" is wired to GET /chart and /dasha — a generated family/friend
-/// profile has no backend behind it yet (see KundliProfile), so that path
-/// keeps its illustrative mock content unchanged.
+/// chart (`profile` omitted, wired to GET /chart and /dasha) or a generated
+/// family/friend one (its chart/dasha were already computed by
+/// get_kundli_screen.dart via POST /chart/compute and travel with the
+/// KundliProfile — no extra fetch needed here).
 class KundliScreen extends StatefulWidget {
   const KundliScreen({super.key, this.profile});
 
@@ -71,17 +72,26 @@ class _KundliScreenState extends State<KundliScreen> {
 
   Map<String, dynamic>? _chart;
   Map<String, dynamic>? _dasha;
+  Map<String, dynamic>? _doshas;
   bool _loading = false;
   String? _error; // 'no-data' | 'generic' | null
 
-  static const _sections = ['Planet', 'Dasha', 'Charts', 'KP System', 'Cusp'];
+  static const _sections = ['Planet', 'Dasha', 'Charts', 'KP System', 'Cusp', 'Doshas'];
 
   KundliProfile get _profile => widget.profile ?? KundliProfile.own;
 
   @override
   void initState() {
     super.initState();
-    if (_profile.isOwn) _load();
+    if (_profile.isOwn) {
+      _load();
+    } else {
+      // Already computed by get_kundli_screen.dart before this screen was
+      // pushed — nothing to fetch.
+      _chart = _profile.chart;
+      _dasha = _profile.dasha;
+      _doshas = _profile.doshas;
+    }
   }
 
   Future<void> _load() async {
@@ -92,10 +102,20 @@ class _KundliScreenState extends State<KundliScreen> {
     try {
       final chart = await ChartApi.getChart();
       final dasha = await ChartApi.getDasha();
+      // Doshas need a saved chart too, but a failure here (e.g. a transient
+      // error) shouldn't block the rest of the Kundli — it just leaves the
+      // Doshas tab showing its own empty state.
+      Map<String, dynamic>? doshas;
+      try {
+        doshas = await DoshaApi.getDoshas();
+      } catch (_) {
+        doshas = null;
+      }
       if (!mounted) return;
       setState(() {
         _chart = chart;
         _dasha = dasha;
+        _doshas = doshas;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -149,7 +169,7 @@ class _KundliScreenState extends State<KundliScreen> {
   }
 
   Widget _body(KundliProfile profile) {
-    if (profile.isOwn && _loading) {
+    if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 80),
         child: Center(
@@ -159,7 +179,7 @@ class _KundliScreenState extends State<KundliScreen> {
       );
     }
 
-    if (profile.isOwn && _error == 'no-data') {
+    if (_error == 'no-data') {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
         child: Center(
@@ -169,7 +189,7 @@ class _KundliScreenState extends State<KundliScreen> {
       );
     }
 
-    if (profile.isOwn && _error != null) {
+    if (_error != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
         child: Center(
@@ -179,8 +199,8 @@ class _KundliScreenState extends State<KundliScreen> {
       );
     }
 
-    final chart = profile.isOwn ? _chart : null;
-    final dasha = profile.isOwn ? _dasha : null;
+    final chart = _chart;
+    final dasha = _dasha;
 
     switch (_section) {
       case 0:
@@ -199,8 +219,10 @@ class _KundliScreenState extends State<KundliScreen> {
       case 3:
         return _KpTab(chart: chart);
       case 4:
-      default:
         return _CuspTab(chart: chart);
+      case 5:
+      default:
+        return _DoshaTab(doshas: _doshas);
     }
   }
 }
@@ -718,12 +740,22 @@ class _ChartsTab extends StatelessWidget {
     ['Ra', 'Rahu'], ['Ke', 'Ketu'],
   ];
 
+  bool get _isD1 => chartIndex == 0;
   bool get _isD60 => chartIndex == 3;
 
   List<dynamic>? get _planets => chart == null ? null : chart![_jsonKeys[chartIndex]] as List<dynamic>;
 
   bool get _d60Locked =>
       chart == null ? (_isD60 && profile.tobUnknown) : (_isD60 && (chart!['d60'] as List).isEmpty);
+
+  // D1's houses (and the Ascendant they're counted from) need a real clock
+  // time the same way D60 does — see AstroModels.cs's BirthChartResult doc
+  // comment. Unlike D60, the `d1` planet list itself is never empty (only
+  // each planet's `house` is null), so this checks the Ascendant's own
+  // `known` flag rather than array emptiness.
+  bool get _d1Locked => chart == null
+      ? (_isD1 && profile.tobUnknown)
+      : (_isD1 && (chart!['ascendant'] as Map<String, dynamic>)['known'] != true);
 
   @override
   Widget build(BuildContext context) {
@@ -739,7 +771,17 @@ class _ChartsTab extends StatelessWidget {
         const SizedBox(height: AppSpacing.lg),
         if (chartIndex == 0) ...[_styleToggle(), const SizedBox(height: AppSpacing.lg)],
         if (_d60Locked)
-          _lockedNotice()
+          _lockedNotice(
+            'Shastiamsha shifts with just a few minutes\' difference. '
+            '${profile.isOwn ? "You" : profile.name} marked the birth time as unknown, '
+            'so this chart is hidden.',
+          )
+        else if (_d1Locked)
+          _lockedNotice(
+            'The Lagna (Ascendant) needs a real clock time to place any planet '
+            'into a house. ${profile.isOwn ? "You" : profile.name} marked the birth '
+            'time as unknown, so this chart can\'t be drawn.',
+          )
         else if (chart == null)
           _mockChartCard()
         else if (chartIndex == 0)
@@ -898,7 +940,7 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  Widget _lockedNotice() {
+  Widget _lockedNotice(String detail) {
     return GlassCard(
       fill: AppColors.critical,
       fillOpacity: 0.12,
@@ -918,9 +960,7 @@ class _ChartsTab extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
                 child: Text(
-                  'Shastiamsha shifts with just a few minutes\' difference. '
-                  '${profile.isOwn ? "You" : profile.name} marked the birth time as unknown, '
-                  'so this chart is hidden.',
+                  detail,
                   textAlign: TextAlign.center,
                   style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
                 ),
@@ -1264,6 +1304,213 @@ class _CuspTab extends StatelessWidget {
           cell(3, 5, color: AppColors.amber),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Doshas tab — Mangal Dosha, Kaal Sarp Dosha (natal), Sade Sati (transit).
+// Wired to GET /doshas (own chart) or the doshas POST /chart/compute already
+// returned (a friend/family profile) — see DoshaEndpoints.cs/DoshaService.cs.
+// Pitra Dosha is deliberately absent: no single classical rule for it is
+// settled enough to compute as fact — that stays an Ask Jay question.
+// ─────────────────────────────────────────────────────────────────────────────
+class _DoshaTab extends StatelessWidget {
+  const _DoshaTab({this.doshas});
+
+  final Map<String, dynamic>? doshas;
+
+  static const _monthsShort = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String _formatDate(String isoDate) {
+    final parts = isoDate.split('-');
+    final month = _monthsShort[int.parse(parts[1]) - 1];
+    return '${int.parse(parts[2])} $month ${parts[0]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (doshas == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
+        child: Center(
+          child: Text('Save your birth details first to see your doshas.',
+              textAlign: TextAlign.center, style: AppText.body),
+        ),
+      );
+    }
+
+    final mangal = doshas!['mangal'] as Map<String, dynamic>;
+    final kaalSarp = doshas!['kaalSarp'] as Map<String, dynamic>;
+    final sadeSati = doshas!['sadeSati'] as Map<String, dynamic>;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Doshas', style: AppText.serif(size: 22, color: AppColors.textPrimary)),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Classical placement checks — Mangal Dosha and Kaal Sarp Dosha from '
+          'your birth chart, Sade Sati from where Saturn is transiting today.',
+          style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        _mangalCard(mangal),
+        const SizedBox(height: AppSpacing.lg),
+        _kaalSarpCard(kaalSarp),
+        const SizedBox(height: AppSpacing.lg),
+        _sadeSatiCard(sadeSati),
+        const SizedBox(height: AppSpacing.lg),
+        Text(
+          'Pitra Dosha isn\'t shown here — classical texts don\'t agree on a single '
+          'rule for it, so it stays a question for Ask Jay rather than an automated flag.',
+          style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusHeader(bool isPresent, String presentLabel, String absentLabel) {
+    return Row(
+      children: [
+        IconChip(
+          child: Icon(isPresent ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+              size: 18, color: isPresent ? AppColors.amber : AppColors.success),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Text(isPresent ? presentLabel : absentLabel,
+              style: AppText.serif(size: 18, weight: FontWeight.w600)),
+        ),
+      ],
+    );
+  }
+
+  Widget _mangalCard(Map<String, dynamic> mangal) {
+    final fromLagna = mangal['fromLagna'] as bool?;
+    final fromMoon = mangal['fromMoon'] as bool;
+    final fromVenus = mangal['fromVenus'] as bool;
+    final marsDignified = mangal['marsInOwnOrExaltedSign'] as bool;
+    final isManglik = fromLagna ?? (fromMoon || fromVenus);
+
+    return GlassCard(
+      goldTopBorder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _statusHeader(isManglik, 'Manglik', 'Not Manglik'),
+          const SizedBox(height: AppSpacing.lg),
+          if (fromLagna == null)
+            Text(
+              'Birth time unknown — the Lagna-based check (the primary one) needs an '
+              'exact time. Shown below are the Moon- and Venus-based checks only.',
+              style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
+            )
+          else
+            _doshaRow('From Lagna', fromLagna, 'House ${mangal['houseFromLagna']}'),
+          const SizedBox(height: AppSpacing.sm),
+          _doshaRow('From Moon', fromMoon, 'House ${mangal['houseFromMoon']}'),
+          const SizedBox(height: AppSpacing.sm),
+          _doshaRow('From Venus', fromVenus, 'House ${mangal['houseFromVenus']}'),
+          if (marsDignified) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Container(height: 1, color: AppColors.borderFaint),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              'Mars sits in its own or exalted sign here — classically this is the most '
+              'commonly cited condition that weakens or cancels the dosha.',
+              style: AppText.sans(size: 12, color: AppColors.amber, height: 1.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _kaalSarpCard(Map<String, dynamic> kaalSarp) {
+    final isPresent = kaalSarp['isPresent'] as bool;
+    final subType = kaalSarp['subType'] as String?;
+    final rahuHouse = kaalSarp['rahuHouseFromLagna'] as int?;
+
+    return GlassCard(
+      goldTopBorder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _statusHeader(isPresent, 'Kaal Sarp Dosha Present', 'No Kaal Sarp Dosha'),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            isPresent
+                ? (subType != null
+                    ? '$subType Kaal Sarp — Rahu sits in house $rahuHouse from your Lagna, with '
+                        'all seven other grahas hemmed to one side of the Rahu-Ketu axis.'
+                    : 'All seven other grahas are hemmed to one side of the Rahu-Ketu axis. '
+                        '(The named sub-type needs a known birth time.)')
+                : 'Not all planets fall on one side of the Rahu-Ketu axis.',
+            style: AppText.sans(size: 13, color: AppColors.textCream, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sadeSatiCard(Map<String, dynamic> sadeSati) {
+    final isActive = sadeSati['isActive'] as bool;
+    final phase = sadeSati['phase'] as String?;
+
+    return GlassCard(
+      goldTopBorder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _statusHeader(isActive, 'Sade Sati Active${phase != null ? " — $phase Phase" : ""}',
+              'Sade Sati Not Active'),
+          if (isActive) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _doshaDateRow('Phase started', sadeSati['phaseStartedOn'] as String),
+            const SizedBox(height: AppSpacing.sm),
+            _doshaDateRow('Phase ends', sadeSati['phaseEndsOn'] as String),
+            const SizedBox(height: AppSpacing.sm),
+            _doshaDateRow('Full cycle ends', sadeSati['fullCycleEndsOn'] as String),
+          ] else ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Transiting Saturn is not currently in the sign before, the same as, or '
+              'after your natal Moon.',
+              style: AppText.sans(size: 13, color: AppColors.textCream, height: 1.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _doshaRow(String label, bool present, String detail) {
+    return Row(
+      children: [
+        Icon(present ? Icons.circle : Icons.circle_outlined,
+            size: 8, color: present ? AppColors.amber : AppColors.textMuted),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(label, style: AppText.sans(size: 13, color: AppColors.textCream)),
+        ),
+        Text(detail, style: AppText.sans(size: 12, color: AppColors.textMuted)),
+      ],
+    );
+  }
+
+  Widget _doshaDateRow(String label, String isoDate) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: AppText.sans(size: 13, color: AppColors.textMuted)),
+        ),
+        Text(_formatDate(isoDate),
+            style: AppText.sans(size: 13, weight: FontWeight.w600, color: AppColors.gold)),
+      ],
     );
   }
 }

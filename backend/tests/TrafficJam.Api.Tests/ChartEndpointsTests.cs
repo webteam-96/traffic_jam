@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Modules.Auth;
+using TrafficJam.Api.Modules.Astro;
 using TrafficJam.Api.Modules.Users;
 using Xunit;
 
@@ -96,6 +97,14 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         Assert.Equal(0, chart.GetProperty("d60").GetArrayLength());
         Assert.Equal(0, chart.GetProperty("kp").GetArrayLength());
         Assert.Equal(0, chart.GetProperty("cusps").GetArrayLength());
+
+        // Regression guard: the Ascendant used to silently default to Aries
+        // (signIndex 0) instead of honestly reporting "unknown" when birth
+        // time wasn't saved — see AstroModels.cs's BirthChartResult doc comment.
+        var ascendant = chart.GetProperty("ascendant");
+        Assert.Equal(JsonValueKind.Null, ascendant.GetProperty("signIndex").ValueKind);
+        Assert.Equal(JsonValueKind.Null, ascendant.GetProperty("sign").ValueKind);
+        Assert.False(ascendant.GetProperty("known").GetBoolean());
     }
 
     [Fact]
@@ -176,5 +185,75 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         var client = _factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/chart")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/dasha")).StatusCode);
+    }
+
+    // "Get Kundli" for family/friends (BACKEND_REQUIREMENTS.md §5.3) needs a
+    // chart+Dasha for birth data that ISN'T the signed-in user's own saved
+    // data — POST /chart/compute is the stateless version of GET /chart +
+    // GET /dasha combined, computed fresh from the request body.
+    [Fact]
+    public async Task ComputeChart_ReturnsSameShapeAsGetChartAndGetDasha()
+    {
+        var client = await AuthedClientAsync("uid-compute-1");
+
+        var response = await client.PostAsJsonAsync("/chart/compute", new ComputeChartRequest(
+            new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false, 19.0760, 72.8777, "Asia/Kolkata"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var chart = body.GetProperty("chart");
+        Assert.True(chart.TryGetProperty("nakshatra", out _));
+        Assert.True(chart.TryGetProperty("ascendant", out var ascendant));
+        Assert.True(ascendant.TryGetProperty("signIndex", out _));
+        Assert.Equal(9, chart.GetProperty("d1").GetArrayLength());
+        Assert.Equal(9, chart.GetProperty("kp").GetArrayLength()); // known birth time -> KP populated
+        Assert.Equal(12, chart.GetProperty("cusps").GetArrayLength());
+
+        var dasha = body.GetProperty("dasha");
+        var maha = dasha.GetProperty("maha");
+        Assert.Equal(9, maha.GetArrayLength());
+        Assert.Contains(maha.EnumerateArray(), p => p.GetProperty("current").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ComputeChart_UnknownBirthTime_KpAndCuspsAreEmpty()
+    {
+        var client = await AuthedClientAsync("uid-compute-2");
+
+        var response = await client.PostAsJsonAsync("/chart/compute", new ComputeChartRequest(
+            new DateOnly(1990, 5, 15), null, true, 19.0760, 72.8777, "Asia/Kolkata"));
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var chart = body.GetProperty("chart");
+        Assert.Equal(9, chart.GetProperty("d1").GetArrayLength()); // signs still computed
+        Assert.Equal(0, chart.GetProperty("kp").GetArrayLength());
+        Assert.Equal(0, chart.GetProperty("cusps").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ComputeChart_DoesNotPersistAnything_UnrelatedToTheCallersOwnSavedChart()
+    {
+        var client = await AuthedClientAsync("uid-compute-3");
+        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Caller", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+        var ownChartBefore = await client.GetFromJsonAsync<JsonElement>("/chart");
+
+        // Compute a chart for a completely different birth (a "friend") —
+        // must not overwrite the caller's own stored chart.
+        await client.PostAsJsonAsync("/chart/compute", new ComputeChartRequest(
+            new DateOnly(1975, 1, 1), new TimeOnly(6, 0), false, 28.6139, 77.2090, "Asia/Kolkata"));
+
+        var ownChartAfter = await client.GetFromJsonAsync<JsonElement>("/chart");
+        Assert.Equal(ownChartBefore.GetProperty("nakshatra").GetString(), ownChartAfter.GetProperty("nakshatra").GetString());
+    }
+
+    [Fact]
+    public async Task ComputeChart_WithoutAuth_Returns401()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/chart/compute", new ComputeChartRequest(
+            new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false, 19.0760, 72.8777, "Asia/Kolkata"));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }

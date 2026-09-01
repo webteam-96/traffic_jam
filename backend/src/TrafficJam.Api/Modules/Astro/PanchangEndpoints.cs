@@ -40,8 +40,21 @@ public static class PanchangEndpoints
                 return Results.NotFound(new { error = new { code = "NO_BIRTH_DATA", message = "Save birth data first." } });
             }
 
-            var targetDate = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
                 DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone)));
+            var targetDate = date ?? today;
+
+            // "Basic Panchang" (Free) vs "Unlimited Panchang" (Saga+) —
+            // today's Panchang is always free; any other date needs a
+            // subscription. The date param itself has always supported an
+            // arbitrary date (see class doc); this is the first place that
+            // distinction is actually enforced.
+            if (targetDate != today && !await db.HasSagaPlusAsync(principal.UserId(), ct))
+            {
+                return Results.Json(
+                    new { error = new { code = "SAGA_PLUS_REQUIRED", message = "The free plan includes today's Panchang. Upgrade to Saga+ to view any date." } },
+                    statusCode: StatusCodes.Status402PaymentRequired);
+            }
 
             var cached = await db.PanchangCache
                 .SingleOrDefaultAsync(p => p.City == birthData.Place && p.Date == targetDate, ct);
@@ -49,7 +62,7 @@ public static class PanchangEndpoints
             if (cached is null)
             {
                 var result = panchangService.Compute(targetDate, birthData.Lat, birthData.Lng, birthData.Timezone);
-                cached = new PanchangCache
+                var candidate = new PanchangCache
                 {
                     City = birthData.Place, Date = targetDate,
                     Paksha = result.Paksha,
@@ -64,8 +77,22 @@ public static class PanchangEndpoints
                     Sunrise = result.Sunrise, Sunset = result.Sunset,
                     Moonrise = result.Moonrise, Moonset = result.Moonset,
                 };
-                db.PanchangCache.Add(cached);
-                await db.SaveChangesAsync(ct);
+                db.PanchangCache.Add(candidate);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    cached = candidate;
+                }
+                catch (DbUpdateException)
+                {
+                    // Another concurrent request for the same (city, date) — e.g.
+                    // the Home screen's Panchang card and Vibe Meter card both
+                    // firing on first load — already cached it first. Drop our
+                    // losing insert and read what they wrote instead of 500ing.
+                    db.Entry(candidate).State = EntityState.Detached;
+                    cached = await db.PanchangCache
+                        .SingleAsync(p => p.City == birthData.Place && p.Date == targetDate, ct);
+                }
             }
 
             return Results.Ok(new PanchangResponse(

@@ -22,7 +22,8 @@ public class AstroEngineServiceTests
         Assert.Contains(chart.D1, p => p.Planet == "Ketu");
         Assert.All(chart.D1, p => Assert.NotNull(p.House));
         Assert.All(chart.D1, p => Assert.InRange(p.House!.Value, 1, 12));
-        Assert.InRange(chart.AscendantSignIndex, 0, 11);
+        Assert.NotNull(chart.AscendantSignIndex);
+        Assert.InRange(chart.AscendantSignIndex!.Value, 0, 11);
     }
 
     [Fact]
@@ -36,6 +37,14 @@ public class AstroEngineServiceTests
         Assert.Equal(9, chart.D1.Count);
         Assert.All(chart.D1, p => Assert.Null(p.House));
         Assert.All(chart.D1, p => Assert.InRange(p.SignIndex, 0, 11)); // signs are still real
+
+        // The bug this regression test guards against: AscendantSignIndex (and
+        // the two longitude fields) used to silently default to 0 (Aries) via
+        // `?? 0` when the birth time was unknown, instead of honestly
+        // reporting "unknown" — see AstroModels.cs's BirthChartResult doc comment.
+        Assert.Null(chart.AscendantSignIndex);
+        Assert.Null(chart.AscendantTropicalLongitude);
+        Assert.Null(chart.AscendantSiderealLongitude);
     }
 
     [Fact]

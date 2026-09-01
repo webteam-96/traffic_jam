@@ -84,9 +84,9 @@ public class AstroEngineService(IAyanamsaService ayanamsa, IAscendantCalculator 
 
         return new BirthChartResult(
             ayanamsaDeg,
-            ascendantTropical ?? 0,
-            ascendantSidereal ?? 0,
-            ascendantSign ?? 0,
+            ascendantTropical,
+            ascendantSidereal,
+            ascendantSign,
             d1,
             d9,
             d10,

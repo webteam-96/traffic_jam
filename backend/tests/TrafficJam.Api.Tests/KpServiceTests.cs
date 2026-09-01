@@ -29,9 +29,11 @@ public class KpServiceTests
 
         // Both ultimately go through the same AscendantCalculator + ayanamsa —
         // this checks the KpService wiring didn't introduce its own divergence.
-        var diff = Math.Abs(VedicMath.Normalize(cusp1Longitude) - VedicMath.Normalize(chart.AscendantSiderealLongitude));
+        // (timeKnown: true above guarantees this is non-null.)
+        var chartAscendant = chart.AscendantSiderealLongitude!.Value;
+        var diff = Math.Abs(VedicMath.Normalize(cusp1Longitude) - VedicMath.Normalize(chartAscendant));
         diff = Math.Min(diff, 360 - diff);
-        Assert.True(diff < 0.01, $"Cusp 1 {cusp1Longitude:F4}° vs chart Ascendant {chart.AscendantSiderealLongitude:F4}° — diff {diff:F4}°");
+        Assert.True(diff < 0.01, $"Cusp 1 {cusp1Longitude:F4}° vs chart Ascendant {chartAscendant:F4}° — diff {diff:F4}°");
     }
 
     [Fact]

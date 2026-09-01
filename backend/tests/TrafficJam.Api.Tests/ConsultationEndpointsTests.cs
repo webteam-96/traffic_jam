@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TrafficJam.Api.Data;
+using TrafficJam.Api.Data.Entities;
 using TrafficJam.Api.Modules.Auth;
 using TrafficJam.Api.Modules.Consultation;
 using TrafficJam.Api.Modules.Users;
@@ -29,6 +30,15 @@ public class ConsultationEndpointsTests : IClassFixture<TrafficJamApiFactory>, I
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
         return client;
+    }
+
+    private async Task GrantSagaPlusAsync(string uid)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var userId = await db.Users.Where(u => u.FirebaseUid == uid).Select(u => u.Id).SingleAsync();
+        db.Subscriptions.Add(new Subscription { UserId = userId, Tier = SubscriptionTier.SagaPlus, RenewsAt = DateTime.UtcNow.AddDays(30) });
+        await db.SaveChangesAsync();
     }
 
     [Fact]
@@ -67,6 +77,35 @@ public class ConsultationEndpointsTests : IClassFixture<TrafficJamApiFactory>, I
         Assert.Single(list!);
         Assert.Equal("career", list![0].Domain);
         Assert.Equal("pending", list[0].Status);
+    }
+
+    // "Priority Ask Jay" (Saga+ feature copy) — a subscriber gets the
+    // fastest SLA any consult plan offers even when they pick "standard",
+    // instead of needing to separately pay per-question for "priority".
+    [Fact]
+    public async Task AskQuestion_SagaPlusSubscriber_GetsPrioritySlaEvenOnStandardPlan()
+    {
+        var client = await AuthedClientAsync("uid-ask-sagaplus");
+        await GrantSagaPlusAsync("uid-ask-sagaplus");
+
+        var askResponse = await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("career", "Will I get promoted?", "standard"));
+        var asked = await askResponse.Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        // "standard" is a 4-hour SLA; a Saga+ subscriber should get "priority"'s 1-hour SLA instead.
+        Assert.True(asked!.Sla <= DateTime.UtcNow.AddHours(1).AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task AskQuestion_FreeTierOnStandardPlan_KeepsTheStandardSla()
+    {
+        var client = await AuthedClientAsync("uid-ask-free-standard");
+
+        var askResponse = await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("career", "Will I get promoted?", "standard"));
+        var asked = await askResponse.Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        Assert.True(asked!.Sla > DateTime.UtcNow.AddHours(1).AddMinutes(1)); // not silently upgraded
     }
 
     [Fact]
@@ -154,6 +193,37 @@ public class ConsultationEndpointsTests : IClassFixture<TrafficJamApiFactory>, I
         var response = await attacker.GetAsync($"/consult/questions/{asked!.QuestionId}/messages");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BookAppointment_ReturnsAReferenceAndPersistsAsPending()
+    {
+        var client = await AuthedClientAsync("uid-appt-1");
+
+        var response = await client.PostAsJsonAsync("/consult/appointments", new BookAppointmentRequest(
+            "Career", "test@example.com", "Career guidance please",
+            new DateOnly(2026, 12, 1), new TimeOnly(10, 0)));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var booked = await response.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        Assert.StartsWith("TJ-", booked!.Reference);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var appointment = await db.Appointments.SingleAsync(a => a.Id == booked.AppointmentId);
+        Assert.Equal("Career", appointment.Area);
+        Assert.Equal(AppointmentStatus.Pending, appointment.Status);
+    }
+
+    [Fact]
+    public async Task BookAppointment_WithoutAuth_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/consult/appointments", new BookAppointmentRequest(
+            "Career", "test@example.com", null, new DateOnly(2026, 12, 1), new TimeOnly(10, 0)));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
