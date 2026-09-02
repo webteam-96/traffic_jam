@@ -5,7 +5,6 @@ import 'app_shell.dart';
 import 'services/auth_service.dart';
 
 // Screens
-import 'screens/auth/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/otp_screen.dart';
 import 'screens/onboarding/welcome_screen.dart';
@@ -58,17 +57,6 @@ class NavGroup {
 /// Every pushed screen, grouped — powers the hamburger nav hub so the whole
 /// app is reachable. In-context taps (home actions, profile rows) push these too.
 const List<NavGroup> kNavGroups = [
-  NavGroup('Onboarding & Auth', [
-    NavDest('Splash', Icons.blur_on, SplashScreen.new),
-    NavDest('Login', Icons.phone_iphone, LoginScreen.new),
-    NavDest('OTP Verification', Icons.pin, OtpScreen.new),
-    NavDest('Welcome', Icons.waving_hand_outlined, WelcomeScreen.new),
-    NavDest('Identity', Icons.person_outline, IdentityScreen.new),
-    NavDest('Birth Time', Icons.schedule, BirthTimeScreen.new),
-    NavDest('Birth Place', Icons.place_outlined, BirthPlaceScreen.new),
-    NavDest('Consent', Icons.verified_user_outlined, ConsentScreen.new),
-    NavDest('Calculating', Icons.auto_awesome, CalculatingScreen.new),
-  ]),
   NavGroup('Daily Insights', [
     NavDest("Today's Signal", Icons.traffic_outlined, TrafficSignalScreen.new),
     NavDest('Auspicious Windows', Icons.timelapse, TimeWindowsScreen.new),
