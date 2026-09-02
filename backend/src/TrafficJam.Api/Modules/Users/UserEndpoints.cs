@@ -27,7 +27,7 @@ public record DeviceRequest(string FcmToken, string Platform);
 
 public static class UserEndpoints
 {
-    public static void MapUserEndpoints(this WebApplication app)
+    public static void MapUserEndpoints(this IEndpointRouteBuilder app)
     {
         var me = app.MapGroup("/me").RequireAuthorization();
 

@@ -23,7 +23,7 @@ public record SignalResponse(
 /// </summary>
 public static class SignalEndpoints
 {
-    public static void MapSignalEndpoints(this WebApplication app)
+    public static void MapSignalEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/signal/today", async (
             DateOnly? date, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,

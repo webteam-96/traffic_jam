@@ -17,7 +17,7 @@ public record RemedyResponse(Guid Id, string Type, string Title, string Detail, 
 /// </summary>
 public static class RemedyEndpoints
 {
-    public static void MapRemedyEndpoints(this WebApplication app)
+    public static void MapRemedyEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/remedies", async (
             System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>

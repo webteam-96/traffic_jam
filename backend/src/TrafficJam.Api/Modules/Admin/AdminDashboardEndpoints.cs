@@ -17,7 +17,7 @@ public record AdminRecentQuestion(
 
 public static class AdminDashboardEndpoints
 {
-    public static void MapAdminDashboardEndpoints(this WebApplication app)
+    public static void MapAdminDashboardEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/admin/dashboard/summary", async (AppDbContext db, CancellationToken ct) =>
         {

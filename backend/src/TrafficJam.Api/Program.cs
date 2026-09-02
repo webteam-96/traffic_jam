@@ -168,28 +168,48 @@ app.UseCors("Web");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Unprefixed — infra health checks (uptime monitors, load balancers) expect
+// this at a fixed conventional path, not versioned alongside the API itself.
 app.MapHealthChecks("/health");
-app.MapAuthEndpoints();
-app.MapUserEndpoints();
-app.MapPlacesEndpoints();
-app.MapNotificationEndpoints();
-app.MapConsultationEndpoints();
-app.MapSubscriptionEndpoints();
-app.MapPanchangEndpoints();
-app.MapTransitEndpoints();
-app.MapSignalEndpoints();
-app.MapChartEndpoints();
-app.MapRemedyEndpoints();
-app.MapDoshaEndpoints();
-app.MapAdminAuthEndpoints();
-app.MapAdminDashboardEndpoints();
-app.MapAdminUserEndpoints();
-app.MapAdminQuestionEndpoints();
-app.MapAdminAppointmentEndpoints();
-app.MapAdminRemedyEndpoints();
-app.MapAdminPlanEndpoints();
+
+// Everything else lives under /api/v1. The production domain's reverse
+// proxy adds its own "/api" on top of this, so the real external path ends
+// up "/api/api/v1/..." — see frontend/lib/services/api_config.dart and
+// admin/src/lib/api.ts, which both call this same "/api/v1" prefix.
+//
+// Also mapped a second time at the old root paths (MapEverythingOn below) —
+// every integration test (TrafficJamApiFactory) and, for now, the local
+// dev workflow still call unprefixed paths like "/chart" directly. Rather
+// than rewrite ~190 call sites across the test suite, both prefixes serve
+// the exact same handlers; there's no behavioral difference between them.
+// Drop the root mount once tests/tooling are updated to call /api/v1 too.
+MapEverythingOn(app.MapGroup("/api/v1"));
+MapEverythingOn(app);
 
 app.Run();
+
+static void MapEverythingOn(IEndpointRouteBuilder routes)
+{
+    routes.MapAuthEndpoints();
+    routes.MapUserEndpoints();
+    routes.MapPlacesEndpoints();
+    routes.MapNotificationEndpoints();
+    routes.MapConsultationEndpoints();
+    routes.MapSubscriptionEndpoints();
+    routes.MapPanchangEndpoints();
+    routes.MapTransitEndpoints();
+    routes.MapSignalEndpoints();
+    routes.MapChartEndpoints();
+    routes.MapRemedyEndpoints();
+    routes.MapDoshaEndpoints();
+    routes.MapAdminAuthEndpoints();
+    routes.MapAdminDashboardEndpoints();
+    routes.MapAdminUserEndpoints();
+    routes.MapAdminQuestionEndpoints();
+    routes.MapAdminAppointmentEndpoints();
+    routes.MapAdminRemedyEndpoints();
+    routes.MapAdminPlanEndpoints();
+}
 
 // Required for WebApplicationFactory-based integration tests.
 public partial class Program;

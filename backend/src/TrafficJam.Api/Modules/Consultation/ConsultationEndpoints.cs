@@ -19,7 +19,7 @@ public record BookAppointmentResponse(Guid AppointmentId, string Reference);
 
 public static class ConsultationEndpoints
 {
-    public static void MapConsultationEndpoints(this WebApplication app)
+    public static void MapConsultationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/consult/plans", async (AppDbContext db, CancellationToken ct) =>
             Results.Ok(await db.ConsultPlanRows.OrderBy(p => p.PriceRupees).ToListAsync(ct))).AllowAnonymous();

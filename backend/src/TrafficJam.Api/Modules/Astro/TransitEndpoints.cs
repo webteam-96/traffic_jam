@@ -28,7 +28,7 @@ public static class TransitEndpoints
     /// retrograde) change too often to be a meaningful "upcoming event".</summary>
     private static readonly string[] WatchedPlanets = ["Sun", "Mars", "Jupiter", "Saturn", "Rahu", "Ketu"];
 
-    public static void MapTransitEndpoints(this WebApplication app)
+    public static void MapTransitEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/transits/today", async (
             DateOnly? date, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,

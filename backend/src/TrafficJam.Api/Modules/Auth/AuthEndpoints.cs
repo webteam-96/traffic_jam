@@ -16,7 +16,7 @@ public record DevLoginRequest(string PhoneNumber, string Otp);
 
 public static class AuthEndpoints
 {
-    public static void MapAuthEndpoints(this WebApplication app)
+    public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         var auth = app.MapGroup("/auth");
 

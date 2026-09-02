@@ -2,7 +2,7 @@ namespace TrafficJam.Api.Modules.Users;
 
 public static class PlacesEndpoints
 {
-    public static void MapPlacesEndpoints(this WebApplication app)
+    public static void MapPlacesEndpoints(this IEndpointRouteBuilder app)
     {
         var places = app.MapGroup("/places").RequireAuthorization();
 

@@ -13,7 +13,7 @@ public record AdminUserDetail(
 
 public static class AdminUserEndpoints
 {
-    public static void MapAdminUserEndpoints(this WebApplication app)
+    public static void MapAdminUserEndpoints(this IEndpointRouteBuilder app)
     {
         // Search is name-only — phone numbers are stored as a one-way hash
         // (see User.PhoneHash's doc comment) precisely so they can't be

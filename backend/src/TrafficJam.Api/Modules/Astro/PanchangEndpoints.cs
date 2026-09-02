@@ -28,7 +28,7 @@ public record PanchangResponse(
 /// </summary>
 public static class PanchangEndpoints
 {
-    public static void MapPanchangEndpoints(this WebApplication app)
+    public static void MapPanchangEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/panchang/today", async (
             DateOnly? date, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,

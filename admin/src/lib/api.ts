@@ -1,4 +1,10 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5227";
+// The deployed backend's real URL — note the doubled "api": a reverse proxy
+// in front of the app adds its own "/api" on top of this app's own "/api/v1"
+// route prefix. Every call elsewhere in this file uses a path like
+// "/admin/auth/login", so this is the entire prefix that needs to precede it.
+const PRODUCTION_URL = "https://trafficjam-live.kaizeninfotech.com/api/api/v1";
+const LOCAL_DEV_URL = "http://localhost:5227/api/v1";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? PRODUCTION_URL : LOCAL_DEV_URL);
 
 const TOKEN_KEY = "tj_admin_token";
 

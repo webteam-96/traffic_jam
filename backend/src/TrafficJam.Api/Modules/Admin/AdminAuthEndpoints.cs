@@ -11,7 +11,7 @@ public record AdminMeResponse(Guid Id, string Name, string Email);
 
 public static class AdminAuthEndpoints
 {
-    public static void MapAdminAuthEndpoints(this WebApplication app)
+    public static void MapAdminAuthEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/admin/auth/login", async (
             AdminLoginRequest request, AppDbContext db, IJwtService jwt, CancellationToken ct) =>

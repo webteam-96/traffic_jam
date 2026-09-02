@@ -18,7 +18,7 @@ public record AdminUpdateSubscriptionPlanRequest(string Name, long PriceRupees, 
 /// </summary>
 public static class AdminPlanEndpoints
 {
-    public static void MapAdminPlanEndpoints(this WebApplication app)
+    public static void MapAdminPlanEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/admin/plans").RequireAuthorization("AdminOnly");
 

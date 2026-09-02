@@ -9,7 +9,7 @@ public record NotificationResponse(Guid Id, string Type, string Title, string Bo
 
 public static class NotificationEndpoints
 {
-    public static void MapNotificationEndpoints(this WebApplication app)
+    public static void MapNotificationEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/notifications").RequireAuthorization();
 

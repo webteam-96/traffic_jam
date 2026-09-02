@@ -16,7 +16,7 @@ namespace TrafficJam.Api.Modules.Astro;
 /// </summary>
 public static class DoshaEndpoints
 {
-    public static void MapDoshaEndpoints(this WebApplication app)
+    public static void MapDoshaEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/doshas", async (
             System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,

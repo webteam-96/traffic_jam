@@ -15,7 +15,7 @@ public record ComputeChartRequest(DateOnly Dob, TimeOnly? Tob, bool UnknownTime,
 /// </summary>
 public static class ChartEndpoints
 {
-    public static void MapChartEndpoints(this WebApplication app)
+    public static void MapChartEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/chart", async (System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
         {

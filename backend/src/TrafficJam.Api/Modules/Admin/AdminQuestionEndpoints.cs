@@ -28,7 +28,7 @@ public record AdminReplyRequest(string Text);
 /// </summary>
 public static class AdminQuestionEndpoints
 {
-    public static void MapAdminQuestionEndpoints(this WebApplication app)
+    public static void MapAdminQuestionEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/admin/questions", async (string? status, AppDbContext db, CancellationToken ct, int page = 1, int pageSize = 25) =>
         {

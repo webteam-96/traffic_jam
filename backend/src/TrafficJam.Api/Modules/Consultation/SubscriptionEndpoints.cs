@@ -13,7 +13,7 @@ public record VerifyRequest(string OrderId, string PaymentId, string Signature, 
 
 public static class SubscriptionEndpoints
 {
-    public static void MapSubscriptionEndpoints(this WebApplication app)
+    public static void MapSubscriptionEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/subscription/plans", async (AppDbContext db, CancellationToken ct) =>
         {

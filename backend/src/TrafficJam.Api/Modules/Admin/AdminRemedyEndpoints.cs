@@ -15,7 +15,7 @@ public record AdminRemedyRequest(string Type, string Title, string Detail, strin
 /// </summary>
 public static class AdminRemedyEndpoints
 {
-    public static void MapAdminRemedyEndpoints(this WebApplication app)
+    public static void MapAdminRemedyEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/admin/remedies").RequireAuthorization("AdminOnly");
 

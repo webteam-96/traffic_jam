@@ -12,7 +12,7 @@ public record AdminUpdateAppointmentStatusRequest(string Status);
 
 public static class AdminAppointmentEndpoints
 {
-    public static void MapAdminAppointmentEndpoints(this WebApplication app)
+    public static void MapAdminAppointmentEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/admin/appointments", async (string? status, AppDbContext db, CancellationToken ct, int page = 1, int pageSize = 25) =>
         {
