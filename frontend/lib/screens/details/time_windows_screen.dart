@@ -100,15 +100,95 @@ class _TimeWindowsScreenState extends State<TimeWindowsScreen> {
             Text("Today's Green Light",
                 style: AppText.serif(size: 24, color: AppColors.textPrimary)),
             const SizedBox(height: AppSpacing.xl),
-            _WindowCard(
-              range: _range(_panchang!['abhijit'] as Map<String, dynamic>),
-              name: 'Abhijit Muhurat',
-              note: 'The victorious midday window — Sun at its zenith.',
-              activities: const ['Meetings', 'Signing', 'Travel', 'Payments'],
-            ),
+            _abhijitCard(_panchang!),
           ],
         ],
       ),
+    );
+  }
+
+  /// Abhijit Muhurat is fixed to solar noon while Rahu Kaal/Yamaganda/Gulika
+  /// shift by weekday — on some weekdays they genuinely, classically overlap
+  /// (or on Wednesdays specifically, since Gulika and Rahu Kaal sit
+  /// back-to-back around midday, fully swallow it). Showing the raw Abhijit
+  /// window as an unconditional "green light" on those days is misleading —
+  /// the backend already trims it (`abhijitCleanStart`/`End`, null if
+  /// nothing survives) against all three, so this shows whatever's actually
+  /// left instead of pretending the whole window is clean.
+  Widget _abhijitCard(Map<String, dynamic> panchang) {
+    final abhijit = panchang['abhijit'] as Map<String, dynamic>;
+    final cleanStartRaw = panchang['abhijitCleanStart'] as String?;
+    final cleanEndRaw = panchang['abhijitCleanEnd'] as String?;
+
+    if (cleanStartRaw == null || cleanEndRaw == null) {
+      return GlassCard(
+        fill: AppColors.critical,
+        fillOpacity: 0.12,
+        borderColor: AppColors.criticalText.withValues(alpha: 0.4),
+        radius: AppRadius.md,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wb_twilight, size: 18, color: AppColors.criticalText),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text('Abhijit Muhurat',
+                      style: AppText.serif(size: 18, color: AppColors.textPrimary)),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              "No clear favourable window today — Abhijit Muhurat (${_range(abhijit)}) falls "
+              'entirely within Rahu Kaal, Yamaganda or Gulika Kaal, with nothing left over. '
+              "Today's chart genuinely has no green light; treat every window with normal caution.",
+              style: AppText.sans(size: 13, color: AppColors.textTan, height: 1.55),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final trimmed = cleanStartRaw != abhijit['start'] || cleanEndRaw != abhijit['end'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _WindowCard(
+          range: '${_formatTime(cleanStartRaw)} – ${_formatTime(cleanEndRaw)}',
+          name: 'Abhijit Muhurat',
+          note: trimmed
+              ? 'The victorious midday window — trimmed below to exclude where it overlaps an avoid period.'
+              : 'The victorious midday window — Sun at its zenith.',
+          activities: const ['Meetings', 'Signing', 'Travel', 'Payments'],
+        ),
+        if (trimmed) ...[
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.amber.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(color: AppColors.goldBorderSoft),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: AppColors.gold),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Abhijit Muhurat is actually ${_range(abhijit)} in full, but part of that '
+                    'overlaps an avoid period today — only the clean portion above is shown.',
+                    style: AppText.sans(size: 12, color: AppColors.textTan, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 

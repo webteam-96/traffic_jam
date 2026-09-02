@@ -69,6 +69,58 @@ public class PanchangServiceTests
     }
 
     [Fact]
+    public void Compute_AbhijitClean_FullySwallowedOnWednesday_TheUserReportedCase()
+    {
+        // The real report this guards: Rahu Kaal 06:54-08:26 UTC vs Abhijit
+        // 06:30-07:19 UTC on 2026-09-02 (Wednesday) — "how can this be a
+        // green light if Rahu Kaal already contradicts it?" On Wednesdays,
+        // Gulika (octant 4, 37.5%-50% of the day) and Rahu Kaal (octant 5,
+        // 50%-62.5%) sit back-to-back with no gap, and together they fully
+        // cover Abhijit's ~46.7%-53.3% window — there's no honestly-clean
+        // moment left, not just a partial overlap.
+        var result = _service.Compute(new DateOnly(2026, 9, 2), MumbaiLat, MumbaiLng, MumbaiTz);
+
+        Assert.Null(result.AbhijitCleanStart);
+        Assert.Null(result.AbhijitCleanEnd);
+        Assert.True(result.GulikaEnd == result.RahuKaalStart); // the adjacency that closes the gap
+        Assert.True(result.GulikaStart <= result.AbhijitStart && result.RahuKaalEnd >= result.AbhijitEnd);
+    }
+
+    // Every weekday's Abhijit-vs-avoid relationship, checked generically
+    // rather than by re-deriving each weekday's octant math by hand (that's
+    // exactly the kind of manual percentage estimate that got the two
+    // deleted versions of these tests wrong) — whatever TrimAgainstInauspicious
+    // returns must satisfy real interval-arithmetic invariants.
+    [Theory]
+    [InlineData(2026, 8, 30)] [InlineData(2026, 8, 31)] [InlineData(2026, 9, 1)]
+    [InlineData(2026, 9, 2)] [InlineData(2026, 9, 3)] [InlineData(2026, 9, 4)] [InlineData(2026, 9, 5)]
+    public void Compute_AbhijitClean_NeverOverlapsAnyAvoidWindow(int y, int m, int d)
+    {
+        var result = _service.Compute(new DateOnly(y, m, d), MumbaiLat, MumbaiLng, MumbaiTz);
+        var avoid = new[]
+        {
+            (result.RahuKaalStart, result.RahuKaalEnd),
+            (result.YamagandaStart, result.YamagandaEnd),
+            (result.GulikaStart, result.GulikaEnd),
+        };
+
+        if (result.AbhijitCleanStart is null || result.AbhijitCleanEnd is null)
+        {
+            Assert.Null(result.AbhijitCleanStart);
+            Assert.Null(result.AbhijitCleanEnd);
+            return;
+        }
+
+        var (cleanStart, cleanEnd) = (result.AbhijitCleanStart.Value, result.AbhijitCleanEnd.Value);
+        Assert.True(cleanStart >= result.AbhijitStart && cleanEnd <= result.AbhijitEnd); // stays within Abhijit
+        Assert.True(cleanStart < cleanEnd); // non-empty
+        foreach (var (avoidStart, avoidEnd) in avoid)
+        {
+            Assert.True(cleanEnd <= avoidStart || cleanStart >= avoidEnd, $"Clean window overlaps {avoidStart}-{avoidEnd}");
+        }
+    }
+
+    [Fact]
     public void TithiNames_ShuklaAndKrishnaOnlyDifferAtTheFullAndNewMoonEntries()
     {
         // Full-moon-adjacent date sanity check isn't hardcoded (we don't have

@@ -12,6 +12,11 @@ public record PanchangResponse(
     DateOnly Date, string Paksha,
     PanchangElement Tithi, PanchangElement Nakshatra, PanchangElement Yoga, PanchangElement Karana,
     PanchangWindow RahuKaal, PanchangWindow Yamaganda, PanchangWindow Gulika, PanchangWindow Abhijit,
+    // Abhijit trimmed against Rahu Kaal/Yamaganda/Gulika — both null means
+    // today's Abhijit is entirely swallowed by one of them, so there's no
+    // honestly-favourable moment to show; non-null but narrower than Abhijit
+    // itself means partially trimmed. See PanchangService's doc comment.
+    DateTime? AbhijitCleanStart, DateTime? AbhijitCleanEnd,
     DateTime Sunrise, DateTime Sunset, DateTime? Moonrise, DateTime? Moonset);
 
 /// <summary>
@@ -74,6 +79,7 @@ public static class PanchangEndpoints
                     YamagandaKaalStart = result.YamagandaStart, YamagandaKaalEnd = result.YamagandaEnd,
                     GulikaKaalStart = result.GulikaStart, GulikaKaalEnd = result.GulikaEnd,
                     AbhijitStart = result.AbhijitStart, AbhijitEnd = result.AbhijitEnd,
+                    AbhijitCleanStart = result.AbhijitCleanStart, AbhijitCleanEnd = result.AbhijitCleanEnd,
                     Sunrise = result.Sunrise, Sunset = result.Sunset,
                     Moonrise = result.Moonrise, Moonset = result.Moonset,
                 };
@@ -105,6 +111,7 @@ public static class PanchangEndpoints
                 new PanchangWindow(cached.YamagandaKaalStart, cached.YamagandaKaalEnd),
                 new PanchangWindow(cached.GulikaKaalStart, cached.GulikaKaalEnd),
                 new PanchangWindow(cached.AbhijitStart, cached.AbhijitEnd),
+                cached.AbhijitCleanStart, cached.AbhijitCleanEnd,
                 cached.Sunrise, cached.Sunset, cached.Moonrise, cached.Moonset));
         }).RequireAuthorization();
     }

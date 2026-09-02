@@ -285,5 +285,42 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
                 RenewsAt = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 GatewayRef = "demo-seed",
             });
+
+        // Every DateTime this app stores is UTC by convention (DateTime.UtcNow,
+        // AstroTime.ToUtcDateTime(), etc.) — but MySqlConnector reads `datetime`
+        // columns back as DateTimeKind.Unspecified, not Utc, since MySQL's
+        // `datetime` type carries no timezone info of its own. That silently
+        // strips the "this is UTC" tag on every read, which then makes
+        // System.Text.Json omit the "Z" suffix when serializing it — and a
+        // client that only converts UTC-marked timestamps to local time (as
+        // this app's Flutter side does) ends up displaying the raw UTC clock
+        // number as if it were already local. Real bug this caught: Panchang
+        // windows (Rahu Kaal, Abhijit Muhurat, ...) showed correctly on the
+        // first computation of a day (an in-memory value, never touched the
+        // DB) but wrong — off by exactly the local UTC offset — on every
+        // later view of that same day (a cache hit, genuinely round-tripped
+        // through MySQL). Forcing Kind=Utc back on every DateTime/DateTime?
+        // read, for every entity, fixes it at the root instead of patching
+        // PanchangCache alone — any other entity's DateTime column read back
+        // from the DB was silently exposed to the same bug.
+        var forceUtc = new ValueConverter<DateTime, DateTime>(
+            v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+        var forceUtcNullable = new ValueConverter<DateTime?, DateTime?>(
+            v => v, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTime))
+                {
+                    property.SetValueConverter(forceUtc);
+                }
+                else if (property.ClrType == typeof(DateTime?))
+                {
+                    property.SetValueConverter(forceUtcNullable);
+                }
+            }
+        }
     }
 }

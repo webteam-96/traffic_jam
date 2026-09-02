@@ -29,6 +29,10 @@ public class PanchangCache
     public required DateTime GulikaKaalEnd { get; set; }
     public required DateTime AbhijitStart { get; set; }
     public required DateTime AbhijitEnd { get; set; }
+    // Null when Abhijit is entirely swallowed by Rahu Kaal/Yamaganda/Gulika
+    // that day — see PanchangService.TrimAgainstInauspicious.
+    public DateTime? AbhijitCleanStart { get; set; }
+    public DateTime? AbhijitCleanEnd { get; set; }
     public required DateTime Sunrise { get; set; }
     public required DateTime Sunset { get; set; }
     public DateTime? Moonrise { get; set; }

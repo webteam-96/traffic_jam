@@ -12,6 +12,13 @@ public record PanchangResult(
     DateTime YamagandaStart, DateTime YamagandaEnd,
     DateTime GulikaStart, DateTime GulikaEnd,
     DateTime AbhijitStart, DateTime AbhijitEnd,
+    // The portion of Abhijit that DOESN'T fall inside Rahu Kaal/Yamaganda/
+    // Gulika — Abhijit is fixed to solar noon while the other three shift
+    // by weekday, so on some weekdays Abhijit is genuinely, classically
+    // partly or fully swallowed by one of them. Null start/end means fully
+    // swallowed (no honestly-favourable time left today); non-null but
+    // different from AbhijitStart/End means partially trimmed.
+    DateTime? AbhijitCleanStart, DateTime? AbhijitCleanEnd,
     DateTime Sunrise, DateTime Sunset,
     DateTime? Moonrise, DateTime? Moonset);
 
@@ -57,6 +64,12 @@ public class PanchangService(IAyanamsaService ayanamsa) : IPanchangService
         var abhijitStart = sunrise.AddDays(muhurta * 7);
         var abhijitEnd = sunrise.AddDays(muhurta * 8);
 
+        var (abhijitCleanStart, abhijitCleanEnd) = TrimAgainstInauspicious(
+            abhijitStart.ToUtcDateTime(), abhijitEnd.ToUtcDateTime(),
+            (rahuStart.ToUtcDateTime(), rahuEnd.ToUtcDateTime()),
+            (yamaStart.ToUtcDateTime(), yamaEnd.ToUtcDateTime()),
+            (gulikaStart.ToUtcDateTime(), gulikaEnd.ToUtcDateTime()));
+
         // Classical convention: the day's Panchang is whatever is in effect at sunrise.
         double SunSidereal(AstroTime t) => VedicMath.Normalize(Astronomy.SunPosition(t).elon - ayanamsa.LahiriDegrees(t));
         double MoonSidereal(AstroTime t) => VedicMath.Normalize(Astronomy.EclipticGeoMoon(t).lon - ayanamsa.LahiriDegrees(t));
@@ -87,12 +100,47 @@ public class PanchangService(IAyanamsaService ayanamsa) : IPanchangService
             YamagandaStart: yamaStart.ToUtcDateTime(), YamagandaEnd: yamaEnd.ToUtcDateTime(),
             GulikaStart: gulikaStart.ToUtcDateTime(), GulikaEnd: gulikaEnd.ToUtcDateTime(),
             AbhijitStart: abhijitStart.ToUtcDateTime(), AbhijitEnd: abhijitEnd.ToUtcDateTime(),
+            AbhijitCleanStart: abhijitCleanStart, AbhijitCleanEnd: abhijitCleanEnd,
             Sunrise: sunrise.ToUtcDateTime(), Sunset: sunset.ToUtcDateTime(),
             Moonrise: moonrise?.ToUtcDateTime(), Moonset: moonset?.ToUtcDateTime());
     }
 
     private static (AstroTime Start, AstroTime End) Octant(AstroTime sunrise, double octantDays, int octant1Indexed) =>
         (sunrise.AddDays(octantDays * (octant1Indexed - 1)), sunrise.AddDays(octantDays * octant1Indexed));
+
+    /// <summary>
+    /// Subtracts every `avoid` window from [start, end), returning the
+    /// largest remaining contiguous piece — null/null if nothing survives
+    /// (fully swallowed). Rahu Kaal/Yamaganda/Gulika are each wider than
+    /// Abhijit's ~49-minute window and mutually exclusive octants of the
+    /// same day, so in practice at most one ever overlaps Abhijit at a
+    /// time — this handles the general case anyway rather than assuming that.
+    /// </summary>
+    internal static (DateTime? Start, DateTime? End) TrimAgainstInauspicious(
+        DateTime start, DateTime end, params (DateTime Start, DateTime End)[] avoid)
+    {
+        var free = new List<(DateTime Start, DateTime End)> { (start, end) };
+        foreach (var (avoidStart, avoidEnd) in avoid)
+        {
+            var next = new List<(DateTime Start, DateTime End)>();
+            foreach (var (s, e) in free)
+            {
+                if (avoidEnd <= s || avoidStart >= e)
+                {
+                    next.Add((s, e));
+                    continue;
+                }
+                if (avoidStart > s) next.Add((s, avoidStart));
+                if (avoidEnd < e) next.Add((avoidEnd, e));
+            }
+            free = next;
+        }
+
+        if (free.Count == 0) return (null, null);
+
+        var largest = free.MaxBy(w => w.End - w.Start);
+        return (largest.Start, largest.End);
+    }
 
     /// <summary>
     /// Finds when a cyclical angle (mod stepDegrees) next moves into a new
