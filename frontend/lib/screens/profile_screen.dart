@@ -283,6 +283,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   )
                 else ...[
+                  _field('NAME',
+                      (_birthData!['name'] as String?)?.trim().isNotEmpty == true
+                          ? _birthData!['name'] as String
+                          : 'Not set'),
+                  const SizedBox(height: AppSpacing.lg),
                   _field('SOLAR DATE', _formatDob(_birthData!['dob'] as String)),
                   const SizedBox(height: AppSpacing.lg),
                   _field('CELESTIAL TIME',
