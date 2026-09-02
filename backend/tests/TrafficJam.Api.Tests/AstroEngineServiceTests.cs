@@ -117,6 +117,48 @@ public class AstroEngineServiceTests
     }
 
     [Fact]
+    public void ComputeBirthChart_TimeKnown_EachVargaHasItsOwnLagnaAndEveryPlanetHasAHouse()
+    {
+        var service = BuildService();
+
+        var chart = service.ComputeBirthChart(
+            new DateTime(1988, 10, 24, 4, 42, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: true);
+
+        Assert.NotNull(chart.D9AscendantSignIndex);
+        Assert.NotNull(chart.D10AscendantSignIndex);
+        Assert.NotNull(chart.D60AscendantSignIndex);
+        Assert.InRange(chart.D9AscendantSignIndex!.Value, 0, 11);
+        Assert.InRange(chart.D10AscendantSignIndex!.Value, 0, 11);
+        Assert.InRange(chart.D60AscendantSignIndex!.Value, 0, 11);
+
+        Assert.All(chart.D9, p => Assert.NotNull(p.House));
+        Assert.All(chart.D10, p => Assert.NotNull(p.House));
+        Assert.All(chart.D60!, p => Assert.NotNull(p.House));
+        Assert.All(chart.D9, p => Assert.InRange(p.House!.Value, 1, 12));
+
+        // Every planet's house must agree with HouseFromSign(planet sign, varga Lagna).
+        foreach (var p in chart.D9)
+        {
+            Assert.Equal(((p.SignIndex - chart.D9AscendantSignIndex!.Value + 12) % 12) + 1, p.House);
+        }
+    }
+
+    [Fact]
+    public void ComputeBirthChart_TimeUnknown_VargaAscendantsAndHousesAreNull()
+    {
+        var service = BuildService();
+
+        var chart = service.ComputeBirthChart(
+            new DateTime(1988, 10, 24, 12, 0, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: false);
+
+        Assert.Null(chart.D9AscendantSignIndex);
+        Assert.Null(chart.D10AscendantSignIndex);
+        Assert.Null(chart.D60AscendantSignIndex);
+        Assert.All(chart.D9, p => Assert.Null(p.House));
+        Assert.All(chart.D10, p => Assert.Null(p.House));
+    }
+
+    [Fact]
     public void ComputeBirthChart_D10AndD60_MatchTheStandaloneVedicMathFormulas()
     {
         var service = BuildService();

@@ -38,11 +38,32 @@ class NorthChartPainter extends CustomPainter {
       ..close();
     canvas.drawPath(diamond, line..color = AppColors.gold.withValues(alpha: 0.32));
 
-    houses.forEach((house, label) {
+    // Every one of the 12 fixed cells gets its house number, even empty
+    // ones — [houses] only carries entries for cells with a label.
+    for (var house = 1; house <= 12; house++) {
       final c = _centers[house];
-      if (c == null) return;
-      final isAsc = label.startsWith('As');
-      final tp = TextPainter(
+      if (c == null) continue;
+      final label = houses[house];
+      final isAsc = label?.startsWith('As') ?? false;
+
+      final numberTp = TextPainter(
+        text: TextSpan(
+          text: '$house',
+          style: AppText.sans(
+            size: 9,
+            weight: FontWeight.w600,
+            color: AppColors.gold.withValues(alpha: 0.55),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      if (label == null) {
+        numberTp.paint(canvas, Offset(c.dx * w - numberTp.width / 2, c.dy * h - numberTp.height / 2));
+        continue;
+      }
+
+      final labelTp = TextPainter(
         text: TextSpan(
           text: label,
           style: AppText.sans(
@@ -55,8 +76,12 @@ class NorthChartPainter extends CustomPainter {
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: w * 0.26);
-      tp.paint(canvas, Offset(c.dx * w - tp.width / 2, c.dy * h - tp.height / 2));
-    });
+
+      final totalHeight = numberTp.height + 1 + labelTp.height;
+      final top = c.dy * h - totalHeight / 2;
+      numberTp.paint(canvas, Offset(c.dx * w - numberTp.width / 2, top));
+      labelTp.paint(canvas, Offset(c.dx * w - labelTp.width / 2, top + numberTp.height + 1));
+    }
   }
 
   @override
@@ -98,13 +123,32 @@ class SouthChartPainter extends CustomPainter {
     final wipe = Paint()..color = AppColors.surfaceRaised.withValues(alpha: 1);
     canvas.drawRect(Rect.fromLTWH(cell, cell, cell * 2, cell * 2), wipe);
 
-    houses.forEach((house, label) {
+    for (var house = 1; house <= 12; house++) {
       final sign = (ascendantSign + house - 1) % 12;
       final rc = _signCell[sign];
-      if (rc == null) return;
+      if (rc == null) continue;
       final center = Offset((rc.$2 + 0.5) * cell, (rc.$1 + 0.5) * cell);
-      final isAsc = label.startsWith('As');
-      final tp = TextPainter(
+      final label = houses[house];
+      final isAsc = label?.startsWith('As') ?? false;
+
+      final numberTp = TextPainter(
+        text: TextSpan(
+          text: '$house',
+          style: AppText.sans(
+            size: 9,
+            weight: FontWeight.w600,
+            color: AppColors.gold.withValues(alpha: 0.55),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      if (label == null) {
+        numberTp.paint(canvas, center - Offset(numberTp.width / 2, numberTp.height / 2));
+        continue;
+      }
+
+      final labelTp = TextPainter(
         text: TextSpan(
           text: label,
           style: AppText.sans(
@@ -117,8 +161,12 @@ class SouthChartPainter extends CustomPainter {
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: cell * 0.85);
-      tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
-    });
+
+      final totalHeight = numberTp.height + 1 + labelTp.height;
+      final top = center.dy - totalHeight / 2;
+      numberTp.paint(canvas, Offset(center.dx - numberTp.width / 2, top));
+      labelTp.paint(canvas, Offset(center.dx - labelTp.width / 2, top + numberTp.height + 1));
+    }
   }
 
   @override
@@ -131,14 +179,16 @@ const planetAbbr = {
   'Venus': 'Ve', 'Saturn': 'Sa', 'Rahu': 'Ra', 'Ketu': 'Ke',
 };
 
-/// Builds a house→label map (house 1 always includes "As") from a `/chart`
-/// response's `d1` planet array, for feeding to [NorthChartPainter]/
-/// [SouthChartPainter]. Accumulates every planet sharing a house (rather than
-/// overwriting) before prefixing house 1 with the Ascendant marker, so two+
-/// planets conjunct with the Ascendant don't clobber each other.
-Map<int, String> housesFromD1(List<dynamic> d1Planets) {
+/// Builds a house→label map (house 1 always includes "As") from any `/chart`
+/// response planet array that carries a `house` field — `d1`, or any of
+/// `d9`/`d10`/`d60` once that chart's own Lagna is known — for feeding to
+/// [NorthChartPainter]/[SouthChartPainter]. Accumulates every planet sharing
+/// a house (rather than overwriting) before prefixing house 1 with the
+/// Ascendant marker, so two+ planets conjunct with the Ascendant don't
+/// clobber each other.
+Map<int, String> housesFromPlanets(List<dynamic> planets) {
   final houses = <int, String>{};
-  for (final planet in d1Planets) {
+  for (final planet in planets) {
     final p = planet as Map<String, dynamic>;
     final house = p['house'] as int?;
     if (house == null) continue;

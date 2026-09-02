@@ -133,7 +133,7 @@ class _MyChartScreenState extends State<MyChartScreen> {
     final dasha = _dasha!;
     final d1 = chart['d1'] as List<dynamic>;
     final ascendant = chart['ascendant'] as Map<String, dynamic>;
-    final houses = housesFromD1(d1);
+    final houses = housesFromPlanets(d1);
 
     return CosmicScrollView(
       child: Column(

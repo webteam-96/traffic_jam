@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../nav.dart';
@@ -6,6 +7,8 @@ import '../../models/kundli_profile.dart';
 import '../../services/chart_api.dart';
 import '../../services/dosha_api.dart';
 import '../../services/api_client.dart';
+import '../../services/user_api.dart';
+import '../../services/kundli_pdf_service.dart';
 import 'dasha_timeline_screen.dart';
 
 const _monthNamesFull = [
@@ -47,6 +50,30 @@ Map<String, dynamic>? _currentOf(List<dynamic> periods) {
     if ((p as Map<String, dynamic>)['current'] == true) return p;
   }
   return null;
+}
+
+/// Generic "how to read this" explainer — same visual language as the
+/// Charts tab's existing sensitivity/vargottama notes, reused across tabs.
+/// Never personalised to the profile being viewed; just teaches the format.
+Widget _howToReadNote(String text) {
+  return GlassCard(
+    radius: AppRadius.sm,
+    fill: AppColors.amber,
+    fillOpacity: 0.08,
+    borderColor: AppColors.gold.withValues(alpha: 0.3),
+    padding: const EdgeInsets.all(AppSpacing.md),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.menu_book_outlined, size: 16, color: AppColors.gold),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(text,
+              style: AppText.sans(size: 12, color: AppColors.textTan, height: 1.45)),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Kundli detail — Business Flow §5.2. Six sections behind one top-level
@@ -133,6 +160,66 @@ class _KundliScreenState extends State<KundliScreen> {
     }
   }
 
+  bool _exporting = false;
+
+  /// Builds the same downloadable PDF the report's Share icon offers —
+  /// cover page, birth details, every chart the app computes as a diamond +
+  /// table, Dasha, KP cusps and Doshas — then hands it to the OS share sheet
+  /// (Printing.sharePdf), whose "Save to Files" is this app's download.
+  Future<void> _downloadPdf(KundliProfile profile) async {
+    if (_chart == null && profile.chart == null) {
+      toast(context, "Nothing to export yet — save birth details first.");
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      String name = profile.name;
+      String dob = profile.dob;
+      String tob = profile.tob;
+      String place = profile.place;
+      if (profile.isOwn) {
+        final birthData = await UserApi.getBirthData();
+        if (birthData != null) {
+          final dobDate = DateTime.parse(birthData['dob'] as String);
+          dob = '${dobDate.day} ${_monthNamesFull[dobDate.month - 1]} ${dobDate.year}';
+          final tobRaw = birthData['tob'] as String?;
+          final unknownTime = birthData['unknownTime'] as bool? ?? false;
+          if (!unknownTime && tobRaw != null) {
+            final parts = tobRaw.split(':');
+            final hour24 = int.parse(parts[0]);
+            final minute = int.parse(parts[1]);
+            final isAm = hour24 < 12;
+            final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+            tob = '${hour12.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} ${isAm ? "AM" : "PM"}';
+          } else {
+            tob = '';
+          }
+          place = birthData['place'] as String? ?? place;
+          name = (birthData['name'] as String?)?.trim().isNotEmpty == true
+              ? birthData['name'] as String
+              : name;
+        }
+      }
+
+      final bytes = await KundliPdfService.generate(
+        name: name,
+        dobDisplay: dob,
+        tobDisplay: tob,
+        place: place,
+        chart: profile.isOwn ? _chart : profile.chart,
+        dasha: profile.isOwn ? _dasha : profile.dasha,
+        doshas: profile.isOwn ? _doshas : profile.doshas,
+      );
+
+      if (!mounted) return;
+      await Printing.sharePdf(bytes: bytes, filename: '${name.replaceAll(' ', '_')}_kundli.pdf');
+    } catch (_) {
+      if (mounted) toast(context, "Couldn't generate the PDF — try again.");
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
@@ -140,9 +227,14 @@ class _KundliScreenState extends State<KundliScreen> {
       title: profile.isOwn ? 'My Kundli' : profile.name,
       actions: [
         IconButton(
-          onPressed: () => toast(context, 'Chart shared'),
-          icon: const Icon(Icons.ios_share,
-              size: 18, color: AppColors.textPrimary),
+          onPressed: _exporting ? null : () => _downloadPdf(profile),
+          icon: _exporting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
+                )
+              : const Icon(Icons.ios_share, size: 18, color: AppColors.textPrimary),
         ),
       ],
       child: Column(
@@ -320,6 +412,13 @@ class _PlanetTab extends StatelessWidget {
         Text(
           'Tap any planet for its exact placement.',
           style: AppText.sans(size: 13, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _howToReadNote(
+          'Each row is one graha (planet): its Rashi (zodiac sign), exact '
+          "degree within that sign, and House — the life area it's currently "
+          "colouring. Sign shows how a planet expresses itself; house shows "
+          "where in your life.",
         ),
         const SizedBox(height: AppSpacing.lg),
         GlassCard(
@@ -528,6 +627,15 @@ class _DashaTab extends StatelessWidget {
         Text(
           'The planetary period you are living through now.',
           style: AppText.sans(size: 13, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _howToReadNote(
+          'Vimshottari Dasha splits your whole life into planetary periods '
+          "(Mahadashas) in a fixed 120-year cycle — the order and length of "
+          "each one is set by your Moon's Nakshatra at birth, not random. "
+          'Inside every Mahadasha runs a shorter Antardasha, blending that '
+          "period's ruling planet with another's. A planet's own house and "
+          'sign shape what its period tends to bring.',
         ),
         const SizedBox(height: AppSpacing.lg),
         GlassCard(
@@ -757,6 +865,22 @@ class _ChartsTab extends StatelessWidget {
       ? (_isD1 && profile.tobUnknown)
       : (_isD1 && (chart!['ascendant'] as Map<String, dynamic>)['known'] != true);
 
+  // Every chart's own Lagna (house 1) — D1's from `ascendant`, each varga's
+  // from its own `d9AscendantSignIndex`/etc. (see AstroModels.cs's
+  // BirthChartResult doc comment). Null for D9/D10 when the birth time is
+  // unknown — their planet *signs* are still valid then, just not houses —
+  // which is exactly when this chart falls back to a plain sign list below
+  // instead of a diamond with nowhere honest to put "house 1".
+  int? get _ascendantSignIndexForCurrentChart {
+    if (chart == null) return null;
+    return switch (chartIndex) {
+      0 => (chart!['ascendant'] as Map<String, dynamic>)['signIndex'] as int?,
+      1 => chart!['d9AscendantSignIndex'] as int?,
+      2 => chart!['d10AscendantSignIndex'] as int?,
+      _ => chart!['d60AscendantSignIndex'] as int?,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -767,6 +891,15 @@ class _ChartsTab extends StatelessWidget {
         Center(
           child: Text(_titles[chartIndex],
               style: AppText.serif(size: 22, color: AppColors.textPrimary)),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _howToReadNote(
+          "Each numbered slot in the diamond is a house, counted from your "
+          "Ascendant (marked 'As') as House 1. Planets listed in a slot are "
+          "placed in that house for this chart. Every divisional chart "
+          "(D1, D9, D10, D60...) re-slices the same birth moment through a "
+          "different lens — the houses and placements shift, the underlying "
+          "birth data doesn't.",
         ),
         const SizedBox(height: AppSpacing.lg),
         if (chartIndex == 0) ...[_styleToggle(), const SizedBox(height: AppSpacing.lg)],
@@ -784,9 +917,11 @@ class _ChartsTab extends StatelessWidget {
           )
         else if (chart == null)
           _mockChartCard()
-        else if (chartIndex == 0)
-          _realD1ChartCard()
-        else
+        else if (_ascendantSignIndexForCurrentChart != null) ...[
+          _realChartCard(_ascendantSignIndexForCurrentChart!, _planets!),
+          const SizedBox(height: AppSpacing.lg),
+          _realVargaSignList(_planets!),
+        ] else
           _realVargaSignList(_planets!),
         const SizedBox(height: AppSpacing.lg),
         Text(_notes[chartIndex],
@@ -871,13 +1006,11 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  // Real D1 has per-planet house numbers (from the natal ascendant), so it
-  // can be drawn in the same diamond/grid painters as the mock, just fed
-  // real placements instead of hardcoded ones.
-  Widget _realD1ChartCard() {
-    final ascendant = chart!['ascendant'] as Map<String, dynamic>;
-    final ascendantSignIndex = ascendant['signIndex'] as int;
-    final houses = housesFromD1(_planets!);
+  // Every chart with a known Lagna — D1 and, now, D9/D10/D60 — has
+  // per-planet house numbers, so all of them draw in the same diamond/grid
+  // painters as the mock, just fed real placements instead of hardcoded ones.
+  Widget _realChartCard(int ascendantSignIndex, List<dynamic> planets) {
+    final houses = housesFromPlanets(planets);
     return GlassCard(
       fill: AppColors.surfaceRaised,
       fillOpacity: 0.5,
@@ -894,15 +1027,18 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  // D9/D10/D60 only carry each planet's sign (the backend doesn't compute a
-  // varga-Lagna house position), so — rather than guess at house placement —
-  // these are shown as a real sign table instead of the diamond chart.
+  // The table alongside every diamond — same planet/sign/degree/house
+  // columns as the Planet tab, just scoped to whichever chart is selected
+  // here. Also stands alone (no House column filled in) for D9/D10 when the
+  // birth time is unknown and there's no honest house to show.
   Widget _realVargaSignList(List<dynamic> planets) {
     return GlassCard(
       padding: EdgeInsets.zero,
       radius: AppRadius.md,
       child: Column(
         children: [
+          _vargaRow(const {'planet': 'GRAHA', 'sign': 'RASHI', 'degreeInSign': 'DEG', 'house': 'H'},
+              isHeader: true, last: false),
           for (int i = 0; i < planets.length; i++)
             _vargaRow(planets[i] as Map<String, dynamic>, last: i == planets.length - 1),
         ],
@@ -910,11 +1046,20 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  Widget _vargaRow(Map<String, dynamic> p, {required bool last}) {
-    final retro = p['retrograde'] as bool;
+  Widget _vargaRow(Map<String, dynamic> p, {bool isHeader = false, required bool last}) {
+    final headerStyle = AppText.sans(
+        size: 9,
+        weight: FontWeight.w700,
+        color: AppColors.textPrimary.withValues(alpha: 0.4),
+        letterSpacing: 0.8);
+    final degreeCell = isHeader
+        ? p['degreeInSign'] as String
+        : '${_formatDeg(p['degreeInSign'] as double)}${(p['retrograde'] as bool) ? ' R' : ''}';
+    final houseCell = isHeader ? p['house'] as String : (p['house'] as int?)?.toString() ?? '—';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 13),
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: isHeader ? 10 : 13),
       decoration: BoxDecoration(
+        color: isHeader ? AppColors.textPrimary.withValues(alpha: 0.02) : null,
         border: last
             ? null
             : Border(bottom: BorderSide(color: AppColors.textPrimary.withValues(alpha: 0.05))),
@@ -924,17 +1069,23 @@ class _ChartsTab extends StatelessWidget {
           Expanded(
               flex: 3,
               child: Text(p['planet'] as String,
-                  style: AppText.sans(size: 13, color: AppColors.gold))),
+                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.gold))),
           Expanded(
               flex: 4,
               child: Text(p['sign'] as String,
-                  style: AppText.sans(size: 13, color: AppColors.textPrimary))),
+                  style: isHeader
+                      ? headerStyle
+                      : AppText.sans(size: 13, color: AppColors.textPrimary))),
           Expanded(
               flex: 3,
-              child: Text(
-                  '${_formatDeg(p['degreeInSign'] as double)}${retro ? ' R' : ''}',
+              child: Text(degreeCell,
                   textAlign: TextAlign.right,
-                  style: AppText.sans(size: 13, color: AppColors.textMuted))),
+                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.textMuted))),
+          Expanded(
+              flex: 2,
+              child: Text(houseCell,
+                  textAlign: TextAlign.center,
+                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.textPrimary))),
         ],
       ),
     );
@@ -1085,6 +1236,14 @@ class _KpTab extends StatelessWidget {
           'A Krishnamurti Paddhati read of your chart — sub-lord detail for '
           'those already familiar with the system.',
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _howToReadNote(
+          'Every house cusp has three rulers: the Sign Lord (rules the sign '
+          'the cusp falls in), the Star Lord (rules the Nakshatra at that '
+          'exact degree), and the Sub Lord (a finer 249-part division within '
+          'the Nakshatra). In KP, the Sub Lord is treated as the real '
+          "decision-maker for that house — often weighted above the sign.",
         ),
         const SizedBox(height: AppSpacing.lg),
         if (locked)

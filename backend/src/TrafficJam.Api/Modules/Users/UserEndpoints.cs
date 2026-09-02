@@ -291,13 +291,31 @@ public static class UserEndpoints
             },
             planets = result.D1,
         }, JsonConventions.CamelCase);
-        chart.D9Json = JsonSerializer.Serialize(result.D9, JsonConventions.CamelCase);
-        chart.D10Json = JsonSerializer.Serialize(result.D10, JsonConventions.CamelCase);
+        // D9/D10/D60 are each wrapped with their own Lagna (ascendantSignIndex)
+        // alongside their planets, the same shape D1Json already uses —
+        // that's what lets each be drawn as its own house diamond instead of
+        // a flat sign list. See ChartEndpoints.cs's GET /chart, which unwraps
+        // this same shape back out into sibling `d9`/`d9AscendantSignIndex`
+        // response fields.
+        chart.D9Json = JsonSerializer.Serialize(new
+        {
+            ascendantSignIndex = result.D9AscendantSignIndex,
+            planets = result.D9,
+        }, JsonConventions.CamelCase);
+        chart.D10Json = JsonSerializer.Serialize(new
+        {
+            ascendantSignIndex = result.D10AscendantSignIndex,
+            planets = result.D10,
+        }, JsonConventions.CamelCase);
         // D60 needs a genuinely exact birth time (see AstroEngineService's doc
-        // comment) — "[]" here means "not available for this profile", the
-        // same not-yet-computed convention used before this chart existed,
-        // not a claim that the D60 chart is empty.
-        chart.D60Json = result.D60 is null ? "[]" : JsonSerializer.Serialize(result.D60, JsonConventions.CamelCase);
+        // comment) — an empty `planets` array here means "not available for
+        // this profile", the same not-yet-computed convention used before
+        // this chart existed, not a claim that the D60 chart is empty.
+        chart.D60Json = JsonSerializer.Serialize(new
+        {
+            ascendantSignIndex = result.D60AscendantSignIndex,
+            planets = (IReadOnlyList<PlanetPosition>)(result.D60 ?? []),
+        }, JsonConventions.CamelCase);
         chart.MoonJson = JsonSerializer.Serialize(result.MoonChart, JsonConventions.CamelCase);
 
         // KP System / Cusp Chart need Placidus house cusps, which — like

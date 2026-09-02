@@ -34,4 +34,14 @@ public record BirthChartResult(
     IReadOnlyList<PlanetPosition> D10,
     IReadOnlyList<PlanetPosition>? D60,
     IReadOnlyList<PlanetPosition> MoonChart,
-    NakshatraInfo MoonNakshatra);
+    NakshatraInfo MoonNakshatra,
+    // Each divisional chart has its own Lagna — the natal Ascendant's own
+    // longitude run through that chart's division formula — distinct from
+    // AscendantSignIndex above (D1's Lagna). Needed to place each varga
+    // planet into a house of its own chart, and to draw it as a diamond
+    // instead of a flat sign list. Null under the same "no exact birth
+    // time" condition as AscendantSignIndex, since a varga Lagna is only as
+    // real as the D1 Ascendant it's derived from.
+    int? D9AscendantSignIndex,
+    int? D10AscendantSignIndex,
+    int? D60AscendantSignIndex);

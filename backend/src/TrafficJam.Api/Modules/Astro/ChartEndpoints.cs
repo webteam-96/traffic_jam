@@ -26,6 +26,9 @@ public static class ChartEndpoints
             }
 
             var d1 = JsonSerializer.Deserialize<JsonElement>(chart.D1Json);
+            var d9 = JsonSerializer.Deserialize<JsonElement>(chart.D9Json);
+            var d10 = JsonSerializer.Deserialize<JsonElement>(chart.D10Json);
+            var d60 = JsonSerializer.Deserialize<JsonElement>(chart.D60Json);
             var response = new
             {
                 ayanamsa = chart.Ayanamsa,
@@ -33,9 +36,13 @@ public static class ChartEndpoints
                 computedAt = chart.ComputedAt,
                 ascendant = d1.GetProperty("ascendant"),
                 d1 = d1.GetProperty("planets"),
-                d9 = JsonSerializer.Deserialize<JsonElement>(chart.D9Json),
-                d10 = JsonSerializer.Deserialize<JsonElement>(chart.D10Json),
-                d60 = JsonSerializer.Deserialize<JsonElement>(chart.D60Json), // parses to an empty array when D60 isn't available — see AstroEngineService
+                d9 = d9.GetProperty("planets"),
+                d9AscendantSignIndex = d9.GetProperty("ascendantSignIndex"),
+                d10 = d10.GetProperty("planets"),
+                d10AscendantSignIndex = d10.GetProperty("ascendantSignIndex"),
+                // planets parses to an empty array when D60 isn't available — see AstroEngineService
+                d60 = d60.GetProperty("planets"),
+                d60AscendantSignIndex = d60.GetProperty("ascendantSignIndex"),
                 moonChart = JsonSerializer.Deserialize<JsonElement>(chart.MoonJson),
                 kp = JsonSerializer.Deserialize<JsonElement>(chart.KpJson),
                 cusps = JsonSerializer.Deserialize<JsonElement>(chart.CuspJson),
@@ -105,8 +112,11 @@ public static class ChartEndpoints
                 },
                 d1 = result.D1,
                 d9 = result.D9,
+                d9AscendantSignIndex = result.D9AscendantSignIndex,
                 d10 = result.D10,
+                d10AscendantSignIndex = result.D10AscendantSignIndex,
                 d60 = result.D60 ?? (object)Array.Empty<object>(),
+                d60AscendantSignIndex = result.D60AscendantSignIndex,
                 moonChart = result.MoonChart,
                 kp = kpJson,
                 cusps = cuspJson,

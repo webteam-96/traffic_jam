@@ -61,17 +61,24 @@ public class AstroEngineService(IAyanamsaService ayanamsa, IAscendantCalculator 
             .Select(p => ToPlanetPosition(p.Name, p.Longitude, p.Retrograde, ascendantSign))
             .ToList();
 
+        // Each divisional chart's own Lagna — the natal Ascendant's longitude
+        // run through that same chart's division formula, the same way every
+        // planet's longitude is. This is what "house 1" means in that chart.
+        var d9AscendantSign = timeKnown ? VedicMath.NavamshaSignIndex(ascendantSidereal!.Value) : (int?)null;
+        var d10AscendantSign = timeKnown ? VedicMath.DashamshaSignIndex(ascendantSidereal!.Value) : (int?)null;
+        var d60AscendantSign = timeKnown ? VedicMath.ShastiamshaSignIndex(ascendantSidereal!.Value) : (int?)null;
+
         var d9 = siderealByPlanet
-            .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.NavamshaSignIndex, VedicMath.NavamshaDegreeInSign))
+            .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.NavamshaSignIndex, VedicMath.NavamshaDegreeInSign, d9AscendantSign))
             .ToList();
 
         var d10 = siderealByPlanet
-            .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.DashamshaSignIndex, VedicMath.DashamshaDegreeInSign))
+            .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.DashamshaSignIndex, VedicMath.DashamshaDegreeInSign, d10AscendantSign))
             .ToList();
 
         var d60 = timeKnown
             ? siderealByPlanet
-                .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.ShastiamshaSignIndex, VedicMath.ShastiamshaDegreeInSign))
+                .Select(p => ToDivisionalPosition(p.Name, p.Longitude, p.Retrograde, VedicMath.ShastiamshaSignIndex, VedicMath.ShastiamshaDegreeInSign, d60AscendantSign))
                 .ToList()
             : null;
 
@@ -92,7 +99,10 @@ public class AstroEngineService(IAyanamsaService ayanamsa, IAscendantCalculator 
             d10,
             d60,
             moonChart,
-            new NakshatraInfo(VedicMath.NakshatraNames[nakshatraIndex], nakshatraIndex, pada));
+            new NakshatraInfo(VedicMath.NakshatraNames[nakshatraIndex], nakshatraIndex, pada),
+            d9AscendantSign,
+            d10AscendantSign,
+            d60AscendantSign);
     }
 
     private static PlanetPosition ToPlanetPosition(string name, double siderealLongitude, bool retrograde, int? ascendantSign)
@@ -104,9 +114,10 @@ public class AstroEngineService(IAyanamsaService ayanamsa, IAscendantCalculator 
 
     private static PlanetPosition ToDivisionalPosition(
         string name, double siderealLongitude, bool retrograde,
-        Func<double, int> signIndexFn, Func<double, double> degreeInSignFn)
+        Func<double, int> signIndexFn, Func<double, double> degreeInSignFn, int? ascendantSign)
     {
         var signIndex = signIndexFn(siderealLongitude);
-        return new PlanetPosition(name, signIndex, VedicMath.SignNames[signIndex], degreeInSignFn(siderealLongitude), null, retrograde);
+        int? house = ascendantSign is null ? null : VedicMath.HouseFromSign(signIndex, ascendantSign.Value);
+        return new PlanetPosition(name, signIndex, VedicMath.SignNames[signIndex], degreeInSignFn(siderealLongitude), house, retrograde);
     }
 }
