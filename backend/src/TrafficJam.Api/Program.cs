@@ -44,20 +44,29 @@ builder.Services.AddHealthChecks()
     .AddCheck<MySqlHealthCheck>("mysql")
     .AddCheck<RedisHealthCheck>("redis");
 
-// Dev-only, wide-open CORS so `flutter run -d chrome` (a different origin —
+// Dev: wide-open CORS so `flutter run -d chrome` (a different origin —
 // localhost:PORT — than this API) can call it. Native iOS/Android builds
-// don't go through a browser and aren't affected by CORS at all. Production
-// needs a real policy scoped to the deployed app's actual origin(s).
-if (builder.Environment.IsDevelopment())
+// don't go through a browser and aren't affected by CORS at all, so this
+// only matters for the admin panel and any Flutter web build.
+//
+// Production: scoped to Cors:AllowedOrigins (e.g. the deployed admin
+// panel's real origin). Unset/empty means no browser origin is allowed —
+// a safe default, not a startup failure, since native clients are unaffected.
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
 {
-    builder.Services.AddCors(options =>
+    options.AddPolicy("Web", policy =>
     {
-        options.AddPolicy("DevWeb", policy => policy
-            .AllowAnyOrigin()
-            .AllowAnyMethod()
-            .AllowAnyHeader());
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        }
+        else
+        {
+            policy.WithOrigins(corsAllowedOrigins).AllowAnyMethod().AllowAnyHeader();
+        }
     });
-}
+});
 
 // ── Auth ─────────────────────────────────────────────────────────────────
 // Firebase Admin SDK: only initialize against a real service account if one
@@ -73,13 +82,16 @@ if (!string.IsNullOrWhiteSpace(firebaseCredentialsPath) && FirebaseAdmin.Firebas
 }
 
 // Auth:DevModeEnabled powers POST /auth/dev-login — a fixed-OTP stand-in for
-// real Firebase phone-OTP, used until a real Firebase project exists. Refuse
-// to even start if it's ever true outside Development, so it can never ship.
+// real Firebase phone-OTP, used until a real Firebase project exists.
+// Deliberately no longer a hard startup failure outside Development — this
+// deployment intentionally ships it on (see appsettings.Production.json)
+// since there's no real Firebase project yet. Logged loudly on every
+// startup instead, so it's never silently forgotten.
 if (builder.Configuration.GetValue<bool>("Auth:DevModeEnabled") && !builder.Environment.IsDevelopment())
 {
-    throw new InvalidOperationException(
-        "Auth:DevModeEnabled must never be true outside the Development environment — " +
-        "it bypasses real phone verification entirely.");
+    Console.Error.WriteLine(
+        "WARNING: Auth:DevModeEnabled=true outside Development — POST /auth/dev-login accepts " +
+        "OTP '123456' for ANY phone number. This must not stay on once a real Firebase project is wired up.");
 }
 
 builder.Services.AddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
@@ -137,7 +149,6 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.UseCors("DevWeb");
 }
 else
 {
@@ -153,6 +164,7 @@ else
     }));
 }
 
+app.UseCors("Web");
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -230,5 +230,60 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
             PasswordHash = "210000.sBvGgNG4BNIZo1TOLt0P1w==.D8IqhFYqaSICrUItAR/LrOUjll5Rjayp7mZtdppxldE=",
             CreatedAt = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         });
+
+        // Dev-login demo accounts — sign in with these numbers via POST
+        // /auth/dev-login (OTP "123456", requires Auth:DevModeEnabled=true;
+        // see appsettings.Production.json) until a real Firebase project
+        // exists. Not encrypted (PhoneHash is a one-way SHA-256, FirebaseUid
+        // is a plain synthetic string — see PhoneHasher/dev-login), so this
+        // is safe to seed via migration regardless of environment. No
+        // BirthData is seeded; sign in and complete onboarding to fill it in.
+        // Remove before any real deployment, same as the admin seed above.
+        modelBuilder.Entity<User>().HasData(
+            new User
+            {
+                Id = Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                PhoneHash = "2ec2c1d2994802d3bba5aa6e697c7d132bcdf9a5c4c5af59a5a9c5e428fedf1",
+                FirebaseUid = "dev:+919999900001",
+                Name = "Demo (Free)",
+                CreatedAt = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new User
+            {
+                Id = Guid.Parse("10000000-0000-0000-0000-000000000002"),
+                PhoneHash = "6a6cbd5fd6f9a693465f6dc2f36698de2502492eec8c4c739cc214b82c02dfe",
+                FirebaseUid = "dev:+919999900002",
+                Name = "Demo (Saga+ Monthly)",
+                CreatedAt = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new User
+            {
+                Id = Guid.Parse("10000000-0000-0000-0000-000000000003"),
+                PhoneHash = "6acfb35b135a02360298fcb372d6672718fb65c1f36cfcb396012deaea2a89a",
+                FirebaseUid = "dev:+919999900003",
+                Name = "Demo (Saga+ Annual)",
+                CreatedAt = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            });
+
+        // Free tier needs no Subscription row at all (see SubscriptionEndpoints'
+        // fallback) — only the two paid demo accounts get one. RenewsAt is set
+        // far out so the demo doesn't quietly fall back to Free mid-showcase.
+        modelBuilder.Entity<Subscription>().HasData(
+            new Subscription
+            {
+                UserId = Guid.Parse("10000000-0000-0000-0000-000000000002"),
+                Tier = SubscriptionTier.SagaPlus,
+                Cycle = BillingCycle.Monthly,
+                RenewsAt = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                GatewayRef = "demo-seed",
+            },
+            new Subscription
+            {
+                UserId = Guid.Parse("10000000-0000-0000-0000-000000000003"),
+                Tier = SubscriptionTier.SagaPlus,
+                Cycle = BillingCycle.Yearly,
+                RenewsAt = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                GatewayRef = "demo-seed",
+            });
     }
 }
