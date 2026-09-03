@@ -66,6 +66,23 @@ flutter:
   assets:
     - assets/figma/
     - assets/data/
+    - assets/images/
+
+  # Fraunces bundled locally (Google Fonts, OFL license) rather than fetched
+  # over the network at runtime via the google_fonts package — that runtime
+  # fetch briefly renders with a fallback font before swapping in once the
+  # download lands, which showed up as a visible layout jump on the splash
+  # screen's title (first thing a cold-started app renders, worst possible
+  # place for a font-swap flash). Only this one family is bundled; every
+  # other GoogleFonts.* call in app_theme.dart still fetches at runtime.
+  fonts:
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces-Regular.ttf
+        - asset: assets/fonts/Fraunces-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Fraunces-Bold.ttf
+          weight: 700
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

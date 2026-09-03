@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
-import 'package:traffic_jam/theme/app_assets.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 
-/// App launch / splash. Full-bleed cosmic backdrop with the logo in a soft
-/// gold glow, the wordmark, a tagline, and a small progress indicator.
+/// App launch / splash. Full-bleed cosmic backdrop, everything centered as
+/// one block: the orbiting moon-and-planet loader, the wordmark, a tagline.
+/// The orbit animation itself is the loading indicator — no separate spinner.
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
@@ -17,54 +17,42 @@ class SplashScreen extends StatelessWidget {
       body: SizedBox.expand(
         child: CosmicBackground(
           child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Spacer(),
-                Container(
-                  width: 132,
-                  height: 132,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.gold.withValues(alpha: 0.08),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.35),
-                        blurRadius: 48,
-                        spreadRadius: 4,
+            // CosmicBackground's Stack uses the default StackFit.loose, so a
+            // plain Center (or a bare Column) shrink-wraps to its content
+            // instead of filling the available space, and Stack then
+            // top/left-aligns that shrunk box — content ends up pinned near
+            // the top-left rather than centered (this is what pinned the
+            // title to the left edge). SizedBox.expand forces tight,
+            // full-size constraints regardless of the Stack's loose fit —
+            // same trick already used one level up for CosmicBackground
+            // itself — so Center underneath it has real bounds to center
+            // precisely within, both axes.
+            child: SizedBox.expand(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const OrbitLoader(size: 140),
+                    const SizedBox(height: AppSpacing.section),
+                    Text(
+                      'TRAFFIC JAM',
+                      textAlign: TextAlign.center,
+                      style: AppText.logoFont(
+                        size: 28,
+                        color: AppColors.textPrimary,
+                        letterSpacing: 2,
                       ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Image.asset(figmaAsset(Assets.logo), width: 72),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Your daily astro-signal',
+                      textAlign: TextAlign.center,
+                      style: AppText.body,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.section),
-                Text(
-                  'TRAFFIC JAM',
-                  textAlign: TextAlign.center,
-                  style: AppText.logoFont(
-                    size: 28,
-                    color: AppColors.textPrimary,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Your daily astro-signal',
-                  textAlign: TextAlign.center,
-                  style: AppText.body,
-                ),
-                const Spacer(),
-                const SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.gold),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.section),
-              ],
+              ),
             ),
           ),
         ),

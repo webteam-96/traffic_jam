@@ -132,14 +132,18 @@ class AppText {
         letterSpacing: letterSpacing,
       );
 
-  /// Brand logo font — Fraunces
+  /// Brand logo font — Fraunces. Bundled as a local asset (see pubspec.yaml)
+  /// rather than GoogleFonts.fraunces()'s runtime network fetch — this one
+  /// is the first text a cold-started app paints (splash screen title), so
+  /// the fetch-then-swap flash was the most visible possible place for it.
   static TextStyle logoFont({
     double size = 18,
     FontWeight weight = FontWeight.w400,
     Color color = AppColors.gold,
     double letterSpacing = 1.8,
   }) =>
-      GoogleFonts.fraunces(
+      TextStyle(
+        fontFamily: 'Fraunces',
         fontSize: size,
         fontWeight: weight,
         color: color,

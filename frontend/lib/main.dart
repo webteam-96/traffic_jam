@@ -57,7 +57,7 @@ class _RootGateState extends State<_RootGate> {
   Future<void> _bootstrap() async {
     await Future.wait([
       AuthService.restoreSession(),
-      Future.delayed(const Duration(milliseconds: 900)),
+      Future.delayed(const Duration(seconds: 4)),
     ]);
     if (mounted) setState(() => _ready = true);
   }
