@@ -12,7 +12,7 @@ namespace TrafficJam.Api.Tests;
 /// Boots the real app in-memory against its own uniquely-named test schema
 /// (never the dev database) and swaps the real Firebase verifier for
 /// <see cref="FakeFirebaseTokenVerifier"/> — everything else (JWT issuance,
-/// EF Core, encryption, MySQL, Redis) is the genuine article.
+/// EF Core, encryption, MySQL) is the genuine article.
 ///
 /// Each instance gets a fresh random database name — xUnit gives every test
 /// class its own <see cref="TrafficJamApiFactory"/> instance via

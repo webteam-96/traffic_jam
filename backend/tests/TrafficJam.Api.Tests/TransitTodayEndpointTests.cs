@@ -81,29 +81,4 @@ public class TransitTodayEndpointTests : IClassFixture<TrafficJamApiFactory>, IA
         Assert.Contains("Rahu", planets);
         Assert.Contains("Ketu", planets);
     }
-
-    // Regression guard for the Redis-cache path added alongside gating: the
-    // cache stores the full unfiltered result once, and the tier filter is
-    // re-applied on every request on the way out — including a cache *hit*,
-    // which deserializes the cached JSON back into a TransitResult before
-    // filtering rather than returning the cached bytes untouched. Requesting
-    // twice proves the second (cache-hit) response is filtered too, not just
-    // the first (compute-fresh) one.
-    [Fact]
-    public async Task GetToday_SagaPlus_CacheHitStillIncludesDeepSpacePlanets()
-    {
-        var client = await AuthedClientAsync("uid-today-cachehit-saga");
-        await GrantSagaPlusAsync("uid-today-cachehit-saga");
-        await client.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
-            "Cache Hit Saga+", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
-            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
-
-        await client.GetFromJsonAsync<JsonElement>("/transits/today"); // warms the cache
-        var second = await client.GetFromJsonAsync<JsonElement>("/transits/today"); // cache hit
-
-        var planets = second.GetProperty("planets").EnumerateArray()
-            .Select(p => p.GetProperty("planet").GetString()).ToList();
-        Assert.Contains("Jupiter", planets);
-        Assert.Contains("Saturn", planets);
-    }
 }

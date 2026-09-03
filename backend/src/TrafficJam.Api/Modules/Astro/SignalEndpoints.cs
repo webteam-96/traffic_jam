@@ -17,9 +17,10 @@ public record SignalResponse(
 /// pieces (chart's natal Moon sign, today's Panchang, today's Dasha, today's
 /// transits) and hands their outputs to TrafficSignalService's pure scoring
 /// function. Cached in MySQL (DailySignal), same per-user-per-day pattern as
-/// Dasha, rather than Redis like transits — either is a defensible choice
-/// for a "one row per user per day" cache; MySQL was picked here just to
-/// keep it queryable/inspectable the same way Dasha and Charts are.
+/// Dasha — kept it queryable/inspectable the same way Dasha and Charts are.
+/// Unlike transits (recomputed fresh every request, no caching at all — see
+/// TransitEndpoints' doc comment for why), this score is genuinely worth
+/// caching since it re-derives from all four inputs.
 /// </summary>
 public static class SignalEndpoints
 {

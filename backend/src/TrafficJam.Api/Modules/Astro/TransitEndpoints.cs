@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Infrastructure;
 
@@ -14,9 +13,11 @@ namespace TrafficJam.Api.Modules.Astro;
 /// endpoints were (see AuthEndpoints' POST /auth/refresh) — there needs to be
 /// *some* way to see and test this computation before its consumers exist.
 ///
-/// Cached in Redis per BACKEND_REQUIREMENTS.md's "transits per user:date"
-/// caching row — the first real use of Redis in this backend; until now it
-/// was only connected and health-checked (see backend/README.md).
+/// Not cached: this is pure in-memory ephemeris math (no I/O). A Redis cache
+/// here was tried and reverted — see the "why not Redis" note in
+/// backend/README.md — a real production outage traced to it: this endpoint
+/// (and PUT /me/birth-data's cache invalidation, and the /health check) all
+/// hung for 8-19s and then 500'd because production's Redis was unreachable.
 /// </summary>
 public record UpcomingTransitEvent(
     string Planet, string FromSign, string ToSign, DateOnly Date, int HouseFromMoon, int? HouseFromLagna);
@@ -32,7 +33,7 @@ public static class TransitEndpoints
     {
         app.MapGet("/transits/today", async (
             DateOnly? date, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
-            IAstroEngineService astroEngine, ITransitService transitService, IConnectionMultiplexer redis, CancellationToken ct) =>
+            IAstroEngineService astroEngine, ITransitService transitService, CancellationToken ct) =>
         {
             var userId = principal.UserId();
             var birthData = await db.BirthData.SingleOrDefaultAsync(b => b.UserId == userId, ct);
@@ -44,30 +45,16 @@ public static class TransitEndpoints
             var targetDate = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
                 DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone)));
 
-            var cacheKey = $"transits:{userId}:{targetDate:yyyy-MM-dd}";
-            var redisDb = redis.GetDatabase();
-            var cached = await redisDb.StringGetAsync(cacheKey);
+            var timeKnown = !birthData.UnknownTime && birthData.Tob is not null;
+            var localDateTime = birthData.Dob.ToDateTime(birthData.Tob ?? new TimeOnly(12, 0));
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone);
+            var birthUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
 
-            TransitResult result;
-            if (cached.HasValue)
-            {
-                result = JsonSerializer.Deserialize<TransitResult>((string)cached!, JsonConventions.CamelCase)!;
-            }
-            else
-            {
-                var timeKnown = !birthData.UnknownTime && birthData.Tob is not null;
-                var localDateTime = birthData.Dob.ToDateTime(birthData.Tob ?? new TimeOnly(12, 0));
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone);
-                var birthUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
+            var natalChart = astroEngine.ComputeBirthChart(birthUtc, birthData.Lat, birthData.Lng, timeKnown);
+            var natalLagnaSign = natalChart.AscendantSignIndex;
+            var natalMoonSign = natalChart.D1.Single(p => p.Planet == "Moon").SignIndex;
 
-                var natalChart = astroEngine.ComputeBirthChart(birthUtc, birthData.Lat, birthData.Lng, timeKnown);
-                var natalLagnaSign = natalChart.AscendantSignIndex;
-                var natalMoonSign = natalChart.D1.Single(p => p.Planet == "Moon").SignIndex;
-
-                result = transitService.Compute(targetDate, natalLagnaSign, natalMoonSign);
-                await redisDb.StringSetAsync(cacheKey, JsonSerializer.Serialize(result, JsonConventions.CamelCase),
-                    TimeSpan.FromHours(26)); // safely spans a full day regardless of when computed
-            }
+            var result = transitService.Compute(targetDate, natalLagnaSign, natalMoonSign);
 
             // "Deep-space transits" (SubscriptionPlanRow's Saga+ feature copy)
             // means the slow-moving outer grahas — exactly GrahaPositions.
@@ -91,7 +78,7 @@ public static class TransitEndpoints
         // this just calls it repeatedly and watches for a SignIndex change.
         app.MapGet("/transits/upcoming", async (
             System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
-            IAstroEngineService astroEngine, ITransitService transitService, IConnectionMultiplexer redis, CancellationToken ct) =>
+            IAstroEngineService astroEngine, ITransitService transitService, CancellationToken ct) =>
         {
             var userId = principal.UserId();
             var birthData = await db.BirthData.SingleOrDefaultAsync(b => b.UserId == userId, ct);
@@ -103,56 +90,42 @@ public static class TransitEndpoints
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
                 DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone)));
 
-            var cacheKey = $"transits:upcoming:{userId}:{today:yyyy-MM-dd}";
-            var redisDb = redis.GetDatabase();
-            var cached = await redisDb.StringGetAsync(cacheKey);
+            var timeKnown = !birthData.UnknownTime && birthData.Tob is not null;
+            var localDateTime = birthData.Dob.ToDateTime(birthData.Tob ?? new TimeOnly(12, 0));
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone);
+            var birthUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
+            var natalChart = astroEngine.ComputeBirthChart(birthUtc, birthData.Lat, birthData.Lng, timeKnown);
+            var natalLagnaSign = natalChart.AscendantSignIndex;
+            var natalMoonSign = natalChart.D1.Single(p => p.Planet == "Moon").SignIndex;
 
-            List<UpcomingTransitEvent> found;
-            if (cached.HasValue)
+            var lastSign = new Dictionary<string, int>();
+            var todayResult = transitService.Compute(today, natalLagnaSign, natalMoonSign);
+            foreach (var planet in WatchedPlanets)
             {
-                found = JsonSerializer.Deserialize<List<UpcomingTransitEvent>>((string)cached!, JsonConventions.CamelCase)!;
+                lastSign[planet] = todayResult.Planets.Single(t => t.Planet == planet).SignIndex;
             }
-            else
+
+            var found = new List<UpcomingTransitEvent>();
+            var pending = new HashSet<string>(WatchedPlanets);
+            for (var i = 1; i <= 1000 && pending.Count > 0; i++)
             {
-                var timeKnown = !birthData.UnknownTime && birthData.Tob is not null;
-                var localDateTime = birthData.Dob.ToDateTime(birthData.Tob ?? new TimeOnly(12, 0));
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(birthData.Timezone);
-                var birthUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified), tz);
-                var natalChart = astroEngine.ComputeBirthChart(birthUtc, birthData.Lat, birthData.Lng, timeKnown);
-                var natalLagnaSign = natalChart.AscendantSignIndex;
-                var natalMoonSign = natalChart.D1.Single(p => p.Planet == "Moon").SignIndex;
-
-                var lastSign = new Dictionary<string, int>();
-                var todayResult = transitService.Compute(today, natalLagnaSign, natalMoonSign);
-                foreach (var planet in WatchedPlanets)
+                var date = today.AddDays(i);
+                var result = transitService.Compute(date, natalLagnaSign, natalMoonSign);
+                foreach (var planet in pending.ToList())
                 {
-                    lastSign[planet] = todayResult.Planets.Single(t => t.Planet == planet).SignIndex;
-                }
-
-                found = [];
-                var pending = new HashSet<string>(WatchedPlanets);
-                for (var i = 1; i <= 1000 && pending.Count > 0; i++)
-                {
-                    var date = today.AddDays(i);
-                    var result = transitService.Compute(date, natalLagnaSign, natalMoonSign);
-                    foreach (var planet in pending.ToList())
+                    var pos = result.Planets.Single(t => t.Planet == planet);
+                    if (pos.SignIndex != lastSign[planet])
                     {
-                        var pos = result.Planets.Single(t => t.Planet == planet);
-                        if (pos.SignIndex != lastSign[planet])
-                        {
-                            found.Add(new UpcomingTransitEvent(
-                                planet, VedicMath.SignNames[lastSign[planet]], VedicMath.SignNames[pos.SignIndex],
-                                date, pos.HouseFromMoon, pos.HouseFromLagna));
-                            pending.Remove(planet);
-                        }
-                        lastSign[planet] = pos.SignIndex;
+                        found.Add(new UpcomingTransitEvent(
+                            planet, VedicMath.SignNames[lastSign[planet]], VedicMath.SignNames[pos.SignIndex],
+                            date, pos.HouseFromMoon, pos.HouseFromLagna));
+                        pending.Remove(planet);
                     }
+                    lastSign[planet] = pos.SignIndex;
                 }
-
-                found.Sort((a, b) => a.Date.CompareTo(b.Date));
-                await redisDb.StringSetAsync(cacheKey, JsonSerializer.Serialize(found, JsonConventions.CamelCase),
-                    TimeSpan.FromHours(26));
             }
+
+            found.Sort((a, b) => a.Date.CompareTo(b.Date));
 
             // Same Free/Saga+ "deep-space transits" split as /transits/today —
             // hide ingress events for the major/slow grahas unless subscribed.

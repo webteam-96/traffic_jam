@@ -13,7 +13,7 @@ speed at this stage; the module boundaries are clean enough to split out
 later if a module needs to scale independently.
 
 - **Database:** MySQL 8, via EF Core + the Pomelo provider (pinned to 9.x — Pomelo has no EF Core 10-compatible release yet)
-- **Cache:** Redis, via StackExchange.Redis — used by `GET /transits/today` (per `user:date`, see "Astro Engine" below); Panchang/Chart/Dasha still use MySQL tables as their cache instead
+- **Cache:** MySQL tables only (`PanchangCache`, `DailySignals`, Chart/Dasha) — no Redis. `GET /transits/today`/`/transits/upcoming` used to cache in Redis (per `user:date`); removed 2026-09-03. Two reasons: the hosting target (Windows IIS) can't run Redis, and — confirmed live on production the same day — `ConnectionStrings:Redis` pointing at `localhost:6379` doesn't resolve to a real Redis wherever this is actually deployed, so every Redis-touching endpoint (`/transits/today`, `/health`, and `PUT /me/birth-data`'s cache invalidation) hung for 8-19s and then 500'd, silently blocking new-user onboarding. The underlying computation is cheap in-memory ephemeris math that never needed caching in the first place — see "Astro Engine" below.
 - **Astro Engine:** [Astronomy Engine](https://github.com/cosinekitty/astronomy) (MIT license), not Swiss Ephemeris — see "Astro Engine" below for why
 - **Auth:** Firebase phone-OTP → our own short-lived JWT + rotating refresh token
 - **Payments:** Razorpay/Stripe — interface built (`IPaymentGateway`), no real gateway wired in yet
@@ -21,7 +21,7 @@ later if a module needs to scale independently.
 ## Local dev setup
 
 ```bash
-# 1. Start MySQL + Redis
+# 1. Start MySQL
 docker compose up -d
 
 # 2. Apply migrations
@@ -37,7 +37,7 @@ dotnet run
 
 MySQL is exposed on host port **3307** (not 3306) — this machine already had
 a native MySQL install bound to 3306, so the container was remapped to avoid
-conflicting with it. Redis is on the standard 6379.
+conflicting with it.
 
 **If `dotnet ef database update` fails with "Table 'X' already exists":**
 the dev database's `__EFMigrationsHistory` table doesn't reflect what's

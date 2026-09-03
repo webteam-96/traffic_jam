@@ -1,10 +1,14 @@
-// The deployed backend's real URL — note the doubled "api": a reverse proxy
-// in front of the app adds its own "/api" on top of this app's own "/api/v1"
-// route prefix. Every call elsewhere in this file uses a path like
-// "/admin/auth/login", so this is the entire prefix that needs to precede it.
-const PRODUCTION_URL = "https://trafficjam-live.kaizeninfotech.com/api/api/v1";
-const LOCAL_DEV_URL = "http://localhost:5227/api/v1";
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? PRODUCTION_URL : LOCAL_DEV_URL);
+// Backend base URL — sourced entirely from VITE_API_BASE_URL, which Vite
+// loads from .env.development or .env.production depending on `npm run dev`
+// vs `npm run build` (see those files, and .env.example for the override
+// convention). Not hardcoded here so there's exactly one place per
+// environment to update if the backend's domain or proxy path ever changes.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+if (!BASE_URL) {
+  throw new Error(
+    "VITE_API_BASE_URL is not set — see admin/.env.development, admin/.env.production, or admin/.env.example.",
+  );
+}
 
 const TOKEN_KEY = "tj_admin_token";
 

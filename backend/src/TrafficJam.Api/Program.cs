@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using StackExchange.Redis;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Infrastructure;
 using TrafficJam.Api.Modules.Auth;
@@ -33,26 +32,40 @@ builder.Services.AddDbContext<AppDbContext>((serviceProvider, options) =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 });
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
-{
-    var connectionString = serviceProvider.GetRequiredService<IConfiguration>().GetConnectionString("Redis")
-        ?? throw new InvalidOperationException("ConnectionStrings:Redis is not configured.");
-    return ConnectionMultiplexer.Connect(connectionString);
-});
-
 builder.Services.AddHealthChecks()
-    .AddCheck<MySqlHealthCheck>("mysql")
-    .AddCheck<RedisHealthCheck>("redis");
+    .AddCheck<MySqlHealthCheck>("mysql");
+
+// Api:PublicBaseUrl is this deployment's single source of truth for "where
+// does this API actually live" — e.g. "https://trafficjam-live.kaizeninfotech.com/api/api/v1"
+// in production, "http://localhost:5227/api/v1" in Development (see each
+// appsettings.*.json). The CORS origin and JWT issuer below are both derived
+// from it rather than configured separately, so there's exactly one value to
+// update if the domain/proxy setup ever changes — previously Cors:AllowedOrigins
+// and Jwt:Issuer were separate hand-typed config entries that had to be kept
+// in sync with this URL (and with the copies hardcoded in frontend/lib/services/
+// api_config.dart and admin/src/lib/api.ts) by hand.
+var publicBaseUrl = builder.Configuration["Api:PublicBaseUrl"];
+var publicOrigin = publicBaseUrl is null ? null : new Uri(publicBaseUrl).GetLeftPart(UriPartial.Authority);
+
+// Also overrides Jwt:Issuer in-place (rather than computing it separately
+// below) so JwtService — which reads Jwt:Issuer independently to sign tokens
+// — and this file's own ValidIssuer (used to validate them) can never drift
+// apart by reading two different derivations of the same URL.
+if (publicBaseUrl is not null)
+{
+    builder.Configuration["Jwt:Issuer"] = new Uri(publicBaseUrl).Host;
+}
 
 // Dev: wide-open CORS so `flutter run -d chrome` (a different origin —
 // localhost:PORT — than this API) can call it. Native iOS/Android builds
 // don't go through a browser and aren't affected by CORS at all, so this
 // only matters for the admin panel and any Flutter web build.
 //
-// Production: scoped to Cors:AllowedOrigins (e.g. the deployed admin
-// panel's real origin). Unset/empty means no browser origin is allowed —
-// a safe default, not a startup failure, since native clients are unaffected.
-var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+// Production: scoped to publicOrigin (the deployed admin panel shares this
+// API's own domain via the reverse proxy). Unset means no browser origin is
+// allowed — a safe default, not a startup failure, since native clients are
+// unaffected.
+var corsAllowedOrigins = publicOrigin is null ? Array.Empty<string>() : [publicOrigin];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Web", policy =>

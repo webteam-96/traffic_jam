@@ -135,9 +135,11 @@ public class UserEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLif
 
     // Regression test for a real bug found during end-to-end testing: editing
     // birth data regenerated the Chart and Dasha correctly, but left
-    // GET /signal/today and /transits/today silently serving a stale cache
-    // (DailySignals row / Redis transits:{userId}:* key) computed from the
-    // OLD birth data — no error, just wrong data for the rest of the day.
+    // GET /signal/today silently serving a stale DailySignals cache row
+    // computed from the OLD birth data — no error, just wrong data for the
+    // rest of the day. /transits/today is uncached (recomputed every request)
+    // so it was never at risk of this, but is checked here too as a guard
+    // against caching being reintroduced there without invalidation.
     [Fact]
     public async Task BirthData_Editing_InvalidatesStaleSignalAndTransitCaches()
     {

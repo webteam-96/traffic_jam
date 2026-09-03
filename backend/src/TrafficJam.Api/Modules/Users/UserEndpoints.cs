@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
 using TrafficJam.Api.Data;
 using TrafficJam.Api.Data.Entities;
 using TrafficJam.Api.Infrastructure;
@@ -47,7 +46,7 @@ public static class UserEndpoints
         me.MapPut("/birth-data", async (
             BirthDataRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
             IAstroEngineService astroEngine, IDashaService dashaService, IKpService kpService,
-            IConnectionMultiplexer redis, CancellationToken ct) =>
+            CancellationToken ct) =>
         {
             var userId = principal.UserId();
             var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
@@ -89,17 +88,17 @@ public static class UserEndpoints
             await RegenerateChartAndDashaAsync(db, userId, request.Dob, request.Tob, request.UnknownTime,
                 request.Lat, request.Lng, request.Timezone, astroEngine, dashaService, kpService, ct);
 
-            // Everything cached downstream of the natal chart (transits'
-            // house-from-Moon/Lagna, and the Traffic Signal score, which
-            // folds Dasha into its own breakdown) is now wrong too and must
-            // be invalidated — found live during end-to-end testing: editing
-            // birth data left GET /signal/today and /transits/today silently
-            // returning a stale cache computed from the OLD birth data, with
-            // no error and no indication anything was wrong. Panchang is
+            // The Traffic Signal score (folds Dasha into its own breakdown)
+            // is cached downstream of the natal chart in DailySignals and is
+            // now wrong too — found live during end-to-end testing: editing
+            // birth data left GET /signal/today silently serving a stale
+            // cache computed from the OLD birth data, with no error and no
+            // indication anything was wrong. Transits are computed fresh on
+            // every request (no cache — see TransitEndpoints' doc comment for
+            // why), so they need no invalidation here. Panchang is
             // deliberately NOT touched here — it's cached per city+date, not
             // per user, so it was never wrong in the first place.
             db.DailySignals.RemoveRange(db.DailySignals.Where(s => s.UserId == userId));
-            await InvalidateTransitCacheAsync(redis, userId);
 
             // The onboarding draft (if any) is superseded once real birth data is saved.
             var draft = await db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == userId, ct);
@@ -368,23 +367,4 @@ public static class UserEndpoints
             end = p.End,
             current = ReferenceEquals(p, current) || (asOfUtc >= p.Start && asOfUtc < p.End),
         }), JsonConventions.CamelCase);
-
-    /// <summary>
-    /// Deletes every cached `transits:{userId}:*` Redis key (TransitEndpoints'
-    /// cache — see its doc comment) for this user, regardless of which date
-    /// each was cached for. A birth-data edit invalidates transit data for
-    /// every date, not just today, so this doesn't limit itself to today's key.
-    /// </summary>
-    private static async Task InvalidateTransitCacheAsync(IConnectionMultiplexer redis, Guid userId)
-    {
-        var db = redis.GetDatabase();
-        foreach (var endpoint in redis.GetEndPoints())
-        {
-            var server = redis.GetServer(endpoint);
-            await foreach (var key in server.KeysAsync(pattern: $"transits:{userId}:*"))
-            {
-                await db.KeyDeleteAsync(key);
-            }
-        }
-    }
 }
