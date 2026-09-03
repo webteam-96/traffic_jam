@@ -3,9 +3,12 @@ import 'package:flutter/services.dart' show rootBundle;
 
 /// One real-world city: display name, state/region, country, and the
 /// lat/lng/timezone an astrological chart needs. Backed by a bundled
-/// GeoNames extract (cities15000 — every populated place with 15,000+
-/// people, ~34,000 worldwide) — no Google Places API key required, no
-/// network call at runtime.
+/// GeoNames extract (cities1000 — every populated place with 1,000+
+/// people, ~171,000 worldwide, ~7,000 in India alone) — no Google Places
+/// API key required, no network call at runtime. Upgraded 2026-09-03 from
+/// the earlier cities15000 extract (~34,000 worldwide, ~3,800 in India),
+/// which was missing most small towns/villages — a real gap for a birth-data
+/// app, since many users are born somewhere below the 15,000-population cutoff.
 class CityEntry {
   const CityEntry({
     required this.name,
