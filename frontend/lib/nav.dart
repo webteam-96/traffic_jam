@@ -32,6 +32,7 @@ import 'screens/profile/book_appointment_screen.dart';
 import 'screens/profile/about_jay_kotecha_screen.dart';
 import 'screens/profile/privacy_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/cosmic_foundations/cosmic_foundations_screen.dart';
 import 'screens/cosmic_foundations/zodiac_signs_screen.dart';
 import 'screens/cosmic_foundations/planets_screen.dart';
 import 'screens/cosmic_foundations/houses_screen.dart';
@@ -185,6 +186,7 @@ void goToUpcomingTransits(BuildContext c) => pushScreen(c, UpcomingTransitsScree
 void goToBookAppointment(BuildContext c) => pushScreen(c, BookAppointmentScreen.new);
 void goToAboutJayKotecha(BuildContext c) => pushScreen(c, AboutJayKotechaScreen.new);
 // Cosmic Foundations
+void goToCosmicFoundations(BuildContext c) => pushScreen(c, CosmicFoundationsScreen.new);
 void goToZodiacSigns(BuildContext c) => pushScreen(c, ZodiacSignsScreen.new);
 void goToPlanets(BuildContext c) => pushScreen(c, PlanetsScreen.new);
 void goToHouses(BuildContext c) => pushScreen(c, HousesScreen.new);

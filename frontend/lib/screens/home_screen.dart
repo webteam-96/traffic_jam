@@ -5,6 +5,8 @@ import '../widgets/widgets.dart';
 import '../nav.dart';
 import '../services/panchang_api.dart';
 import '../services/signal_api.dart';
+import '../services/user_api.dart';
+import '../services/chart_api.dart';
 import 'notifications_screen.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'details/traffic_signal_screen.dart';
@@ -12,8 +14,9 @@ import 'details/vibe_meter_screen.dart';
 import 'profile/book_appointment_screen.dart';
 
 /// Home dashboard — Figma node 1:711.
-/// Action hub (2x2) · Today's Panchang · Celestial Vibe Meter ·
-/// Private Cosmic Reading · Cosmic Foundations grid.
+/// Astro Identity · Today's Panchang · Action hub (2x2) · Celestial Vibe
+/// Meter · Private Cosmic Reading. Cosmic Foundations moved to its own page,
+/// reachable from the top-bar button (see AppTopBar/AppShell).
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, this.onOpenTab});
 
@@ -26,13 +29,15 @@ class HomeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ActionHub(onOpenTab: onOpenTab),
+          const _AstroIdentityHeader(),
           const SizedBox(height: AppSpacing.section),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => onOpenTab?.call(1),
             child: const _TodaysPanchangCard(),
           ),
+          const SizedBox(height: AppSpacing.section),
+          _ActionHub(onOpenTab: onOpenTab),
           const SizedBox(height: AppSpacing.xl),
           GlassCardTapWrapper(
             onTap: () => pushScreen(context, VibeMeterScreen.new),
@@ -40,8 +45,132 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xl),
           const _CosmicReadingCard(),
-          const SizedBox(height: AppSpacing.section),
-          const _CosmicFoundations(),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Astro Identity + name ─────────────────────────────────────────────────
+class _AstroIdentityHeader extends StatefulWidget {
+  const _AstroIdentityHeader();
+
+  @override
+  State<_AstroIdentityHeader> createState() => _AstroIdentityHeaderState();
+}
+
+class _AstroIdentityHeaderState extends State<_AstroIdentityHeader> {
+  String? _name;
+  String? _lagna, _moonSign, _sunSign;
+  bool _loadingName = true;
+  bool _loadingChart = true;
+  bool get _loading => _loadingName || _loadingChart;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadName();
+    _loadChart();
+  }
+
+  // Split from _loadChart (rather than one Future.wait) so a chart hiccup
+  // never hides a name we already successfully fetched, and vice versa.
+  Future<void> _loadName() async {
+    try {
+      final birthData = await UserApi.getBirthData();
+      if (mounted) setState(() => _name = (birthData?['name'] as String?)?.trim());
+    } catch (_) {
+      // No birth data yet, or a transient error — greeting falls back to "there".
+    } finally {
+      if (mounted) setState(() => _loadingName = false);
+    }
+  }
+
+  Future<void> _loadChart() async {
+    try {
+      final chart = await ChartApi.getChart();
+      final d1 = (chart['d1'] as List).cast<Map<String, dynamic>>();
+      final sun = d1.where((p) => p['planet'] == 'Sun').firstOrNull;
+      final moon = d1.where((p) => p['planet'] == 'Moon').firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        _lagna = (chart['ascendant'] as Map<String, dynamic>?)?['sign'] as String?;
+        _sunSign = sun?['sign'] as String?;
+        _moonSign = moon?['sign'] as String?;
+      });
+    } catch (_) {
+      // No chart yet (birth data not saved) or a transient error — falls
+      // back to the "—" empty state, same as Profile's own Astro Identity card.
+    } finally {
+      if (mounted) setState(() => _loadingChart = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final greetingName = (_name?.isNotEmpty ?? false) ? _name! : 'there';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Hello, $greetingName',
+            style: AppText.serif(size: 26, weight: FontWeight.w600, color: AppColors.textPrimary)),
+        const SizedBox(height: AppSpacing.lg),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
+            ),
+          )
+        else if (_lagna == null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => pushScreen(context, KundliLandingScreen.new),
+            child: Text(
+              'Save your birth details to reveal your astro identity.',
+              style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.4),
+            ),
+          )
+        else
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.md,
+            children: [
+              _IdentityChip('LAGNA', _lagna!),
+              _IdentityChip('MOON SIGN', _moonSign ?? '—'),
+              _IdentityChip('SUN SIGN', _sunSign ?? '—'),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _IdentityChip extends StatelessWidget {
+  const _IdentityChip(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised2.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: AppText.sans(size: 9, color: AppColors.textMuted, letterSpacing: 0.6)),
+          const SizedBox(height: 2),
+          Text(value, style: AppText.sans(size: 13, weight: FontWeight.w600, color: AppColors.gold)),
         ],
       ),
     );
@@ -362,78 +491,6 @@ class _CosmicReadingCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-// ── Cosmic Foundations ────────────────────────────────────────────────────────
-class _FoundationItem {
-  const _FoundationItem(this.icon, this.title, this.subtitle, this.iconSize, this.onTap);
-  final String icon;
-  final String title;
-  final String subtitle;
-  final double iconSize;
-  final void Function(BuildContext) onTap;
-}
-
-const _foundations = [
-  _FoundationItem(Assets.iconZodiac, '12 Zodiac Signs', 'Discover your core identity.', 25, goToZodiacSigns),
-  _FoundationItem(Assets.iconPlanets, '9 Planets', 'The celestial influencers.', 28, goToPlanets),
-  _FoundationItem(Assets.iconHouses, '12 Houses', 'Areas of life experience.', 22, goToHouses),
-  _FoundationItem(Assets.iconElements, '5 Elements', 'The energetic makeup.', 24, goToElements),
-  _FoundationItem(Assets.iconNakshatras, '27 Nakshatras', 'The lunar mansions.', 27, goToNakshatras),
-  _FoundationItem(Assets.iconYog, 'Yog in Astrology', 'Powerful cosmic pairings.', 22, goToYog),
-];
-
-class _CosmicFoundations extends StatelessWidget {
-  const _CosmicFoundations();
-
-  @override
-  Widget build(BuildContext context) {
-    Widget card(_FoundationItem f) => GlassCard(
-          radius: AppRadius.lg,
-          borderColor: AppColors.borderSoft,
-          padding: const EdgeInsets.all(AppSpacing.cardPad),
-          onTap: () => f.onTap(context),
-          child: Column(
-            children: [
-              IconChip(
-                size: 64,
-                circular: true,
-                glow: true,
-                child: SvgIcon(f.icon, size: f.iconSize, color: AppColors.gold),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              Text(f.title,
-                  textAlign: TextAlign.center, style: AppText.headingSerif),
-              const SizedBox(height: AppSpacing.sm),
-              Text(f.subtitle,
-                  textAlign: TextAlign.center,
-                  style: AppText.microLabel.copyWith(color: AppColors.textMuted)),
-            ],
-          ),
-        );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Cosmic Foundations',
-            style: AppText.headingSerif.copyWith(color: AppColors.amber)),
-        const SizedBox(height: AppSpacing.xxl),
-        for (int r = 0; r < _foundations.length; r += 2) ...[
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: card(_foundations[r])),
-                const SizedBox(width: AppSpacing.lg),
-                Expanded(child: card(_foundations[r + 1])),
-              ],
-            ),
-          ),
-          if (r + 2 < _foundations.length) const SizedBox(height: AppSpacing.lg),
-        ],
-      ],
     );
   }
 }

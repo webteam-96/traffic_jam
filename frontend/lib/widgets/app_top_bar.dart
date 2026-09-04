@@ -7,11 +7,12 @@ import 'app_widgets.dart';
 const double kTopBarHeight = 56;
 
 /// Frosted top app bar shown on the five main tabs:
-/// hamburger • Traffic Jam logo+wordmark • bell • avatar.
+/// hamburger • Traffic Jam logo+wordmark • Cosmic Foundations • bell • avatar.
 class AppTopBar extends StatelessWidget {
-  const AppTopBar({super.key, this.onMenu, this.onBell, this.onAvatar});
+  const AppTopBar({super.key, this.onMenu, this.onFoundations, this.onBell, this.onAvatar});
 
   final VoidCallback? onMenu;
+  final VoidCallback? onFoundations;
   final VoidCallback? onBell;
   final VoidCallback? onAvatar;
 
@@ -44,6 +45,13 @@ class AppTopBar extends StatelessWidget {
               Text('TRAFFIC JAM',
                   style: AppText.logoFont(size: 18, letterSpacing: 1.8)),
               const Spacer(),
+              GestureDetector(
+                onTap: onFoundations,
+                behavior: HitTestBehavior.opaque,
+                child: const SvgIcon(Assets.iconZodiac,
+                    width: 18, height: 18, color: AppColors.textPrimary),
+              ),
+              const SizedBox(width: AppSpacing.xxl),
               GestureDetector(
                 onTap: onBell,
                 behavior: HitTestBehavior.opaque,

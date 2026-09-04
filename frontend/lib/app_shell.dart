@@ -53,6 +53,7 @@ class _AppShellState extends State<AppShell> {
               right: 0,
               child: AppTopBar(
                 onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                onFoundations: () => goToCosmicFoundations(context),
                 onBell: () => pushScreen(context, NotificationsScreen.new),
                 onAvatar: () => _select(4),
               ),
