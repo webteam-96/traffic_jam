@@ -39,7 +39,9 @@ const STATUS_OPTIONS = ["Pending", "Confirmed", "Completed", "Cancelled"];
 export function Appointments() {
   const [filter, setFilter] = useState("Pending");
   const [items, setItems] = useState<Appointment[] | null>(null);
-  const [openUserId, setOpenUserId] = useState<string | null>(null);
+  // Both the user id and that booking's email — the email lives on the
+  // appointment, not the user record, so the drawer can't fetch it itself.
+  const [openUser, setOpenUser] = useState<{ id: string; email: string } | null>(null);
   const toast = useToast();
 
   const load = () => {
@@ -97,11 +99,11 @@ export function Appointments() {
                 className="row row--clickable"
                 role="button"
                 tabIndex={0}
-                onClick={() => setOpenUserId(a.userId)}
+                onClick={() => setOpenUser({ id: a.userId, email: a.email })}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setOpenUserId(a.userId);
+                    setOpenUser({ id: a.userId, email: a.email });
                   }
                 }}
               >
@@ -149,7 +151,13 @@ export function Appointments() {
         </div>
       )}
 
-      {openUserId && <UserDrawer id={openUserId} onClose={() => setOpenUserId(null)} />}
+      {openUser && (
+        <UserDrawer
+          id={openUser.id}
+          contactEmail={openUser.email}
+          onClose={() => setOpenUser(null)}
+        />
+      )}
     </div>
   );
 }

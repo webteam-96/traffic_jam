@@ -18,7 +18,21 @@ export interface UserDetail {
 /// Lives here rather than inside Users.tsx because Appointments opens the
 /// same panel when a request card is clicked — same person, same details,
 /// no reason for two versions of it.
-export function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+///
+/// `contactEmail` is passed in rather than fetched: a User row has no email
+/// of its own (see User.cs — only a one-way phone hash and a Firebase uid).
+/// Email is captured per-booking on the Appointment, so when this drawer is
+/// opened from an appointment, that booking's email is the contact detail
+/// worth surfacing here; opened from the Users list there simply isn't one.
+export function UserDrawer({
+  id,
+  contactEmail,
+  onClose,
+}: {
+  id: string;
+  contactEmail?: string;
+  onClose: () => void;
+}) {
   const [detail, setDetail] = useState<UserDetail | null>(null);
 
   useEffect(() => {
@@ -46,6 +60,16 @@ export function UserDrawer({ id, onClose }: { id: string; onClose: () => void })
         ) : (
           <div className="drawer__body">
             <div className="snapshot" style={{ marginBottom: 20 }}>
+              {contactEmail && (
+                <div className="snapshot__item" style={{ gridColumn: "1 / -1" }}>
+                  <div className="snapshot__label">Email (from their booking)</div>
+                  <div className="snapshot__value">
+                    <a href={`mailto:${contactEmail}`} style={{ color: "inherit" }}>
+                      {contactEmail}
+                    </a>
+                  </div>
+                </div>
+              )}
               <div className="snapshot__item">
                 <div className="snapshot__label">Plan</div>
                 <div className="snapshot__value">{detail.tier}</div>
