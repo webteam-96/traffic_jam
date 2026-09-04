@@ -103,4 +103,28 @@ public class BirthDataEncryptionIntegrationTests : IAsyncLifetime
         Assert.DoesNotContain("Bengaluru", rawPlace);
         Assert.DoesNotContain("1990", rawDob);
     }
+
+    // Users.Phone holds the readable number so admins can call people back,
+    // which only stays acceptable while the database itself never sees it in
+    // the clear. PhoneHash beside it is meant to be plaintext-looking — it's
+    // a one-way digest and the queryable half of the pair.
+    [Fact]
+    public async Task RawMySqlColumn_NeverContainsThePlaintextPhoneNumber()
+    {
+        const string phone = "+919876500123";
+        var user = new User { PhoneHash = "hash-3", FirebaseUid = "fb-3", Phone = phone, Name = "Test User 3" };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await using var connection = new MySqlConnection(TestConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Phone FROM Users WHERE Id = @id";
+        command.Parameters.AddWithValue("@id", user.Id.ToString());
+        var rawPhone = (string)(await command.ExecuteScalarAsync())!;
+
+        Assert.DoesNotContain("9876500123", rawPhone);
+        Assert.Equal(phone, (await _db.Users.SingleAsync(u => u.Id == user.Id)).Phone);
+    }
 }

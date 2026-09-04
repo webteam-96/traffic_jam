@@ -68,6 +68,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
         {
             e.HasIndex(u => u.FirebaseUid).IsUnique();
             e.HasIndex(u => u.PhoneHash).IsUnique();
+            // Readable but encrypted at rest, same treatment as birth data.
+            // Deliberately NOT indexed/queryable: AES-GCM re-encrypts with a
+            // fresh nonce every write, so equal numbers produce different
+            // ciphertext — PhoneHash above is what lookups match on.
+            e.Property(u => u.Phone).HasConversion(encryptedNullableString);
         });
 
         modelBuilder.Entity<BirthData>(e =>
@@ -234,10 +239,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
         // Dev-login demo accounts — sign in with these numbers via POST
         // /auth/dev-login (OTP "123456", requires Auth:DevModeEnabled=true;
         // see appsettings.Production.json) until a real Firebase project
-        // exists. Not encrypted (PhoneHash is a one-way SHA-256, FirebaseUid
-        // is a plain synthetic string — see PhoneHasher/dev-login), so this
-        // is safe to seed via migration regardless of environment. No
-        // BirthData is seeded; sign in and complete onboarding to fill it in.
+        // exists. Nothing encrypted is seeded (PhoneHash is a one-way SHA-256,
+        // FirebaseUid is a plain synthetic string — see PhoneHasher/dev-login),
+        // so this is safe to seed via migration regardless of environment.
+        // Phone is deliberately left null: it runs through the AES converter,
+        // which uses a fresh nonce per write, so seeding it would bake a
+        // different ciphertext into every regenerated migration. These are
+        // dev accounts and the number is right there in FirebaseUid; a real
+        // sign-in fills the column in. No BirthData is seeded either; sign in
+        // and complete onboarding to fill that in.
         // Remove before any real deployment, same as the admin seed above.
         modelBuilder.Entity<User>().HasData(
             new User

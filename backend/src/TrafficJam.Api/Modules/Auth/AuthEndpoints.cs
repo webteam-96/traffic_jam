@@ -169,6 +169,13 @@ public static class AuthEndpoints
             }
         }
 
+        // Sign-in is the only moment the raw number passes through, so it's
+        // also the only chance to fill it in for accounts that predate the
+        // column (their number exists solely as an unreversible hash). Set
+        // unconditionally rather than only-when-null so a re-verified number
+        // stays in step with the hash it's being matched against.
+        user.Phone = phoneNumber;
+
         var accessToken = jwt.IssueAccessToken(user);
         var refresh = jwt.IssueRefreshToken();
         db.RefreshTokens.Add(new RefreshToken

@@ -39,9 +39,9 @@ const STATUS_OPTIONS = ["Pending", "Confirmed", "Completed", "Cancelled"];
 export function Appointments() {
   const [filter, setFilter] = useState("Pending");
   const [items, setItems] = useState<Appointment[] | null>(null);
-  // Both the user id and that booking's email — the email lives on the
-  // appointment, not the user record, so the drawer can't fetch it itself.
-  const [openUser, setOpenUser] = useState<{ id: string; email: string } | null>(null);
+  // The user to open, plus which of their bookings was clicked — someone with
+  // several requests gets that one highlighted in the drawer's list.
+  const [openUser, setOpenUser] = useState<{ id: string; bookingId: string } | null>(null);
   const toast = useToast();
 
   const load = () => {
@@ -99,11 +99,11 @@ export function Appointments() {
                 className="row row--clickable"
                 role="button"
                 tabIndex={0}
-                onClick={() => setOpenUser({ id: a.userId, email: a.email })}
+                onClick={() => setOpenUser({ id: a.userId, bookingId: a.id })}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setOpenUser({ id: a.userId, email: a.email });
+                    setOpenUser({ id: a.userId, bookingId: a.id });
                   }
                 }}
               >
@@ -154,7 +154,7 @@ export function Appointments() {
       {openUser && (
         <UserDrawer
           id={openUser.id}
-          contactEmail={openUser.email}
+          highlightBookingId={openUser.bookingId}
           onClose={() => setOpenUser(null)}
         />
       )}

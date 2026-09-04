@@ -33,7 +33,7 @@ export function Users() {
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <p>{total ? `${total} people have signed up.` : "Everyone who's signed up."} Search is by name only — phone numbers are stored as a one-way hash and can't be looked up.</p>
+          <p>{total ? `${total} people have signed up.` : "Everyone who's signed up."} Search is by name only — open anyone to see their phone number.</p>
         </div>
         <input
           placeholder="Search by name…"

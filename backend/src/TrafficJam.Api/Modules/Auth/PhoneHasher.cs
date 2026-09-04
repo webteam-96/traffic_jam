@@ -5,7 +5,9 @@ namespace TrafficJam.Api.Modules.Auth;
 
 /// <summary>
 /// SHA-256 hash of an E.164 phone number for <see cref="Data.Entities.User.PhoneHash"/>
-/// — we key users by phone without ever storing the number itself.
+/// — a stable, queryable key for finding a user by their number. The number
+/// itself is stored separately and encrypted (<see cref="Data.Entities.User.Phone"/>);
+/// this hash exists because that ciphertext can't be matched in a WHERE clause.
 /// </summary>
 public static class PhoneHasher
 {

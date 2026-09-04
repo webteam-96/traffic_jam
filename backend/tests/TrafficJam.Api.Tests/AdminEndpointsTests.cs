@@ -178,6 +178,59 @@ public class AdminEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         Assert.Equal("Free", detail.Tier);
     }
 
+    // The number someone signed in with is the only contact detail the admin
+    // panel has for a user who has never booked an appointment, so signing in
+    // has to record it and the detail endpoint has to hand it back readable —
+    // it's stored encrypted, and a converter that silently failed to decrypt
+    // would still round-trip inside the app.
+    [Fact]
+    public async Task GetUserDetail_ReturnsTheNumberTheySignedInWith()
+    {
+        const string phone = "+919876543210";
+        var client = _factory.CreateClient();
+        var session = await client.PostAsJsonAsync("/auth/session", new SessionRequest($"uid-admin-phone:{phone}"));
+        var tokens = await session.Content.ReadFromJsonAsync<SessionResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
+        var me = await client.GetFromJsonAsync<JsonElement>("/me");
+        var userId = me.GetProperty("id").GetGuid();
+
+        var admin = await AuthedAdminClientAsync();
+        var detail = await admin.GetFromJsonAsync<AdminUserDetail>($"/admin/users/{userId}");
+
+        Assert.Equal(phone, detail!.Phone);
+    }
+
+    // Whoever runs the consultation opens this drawer to prepare for it, so
+    // the detail endpoint has to carry the booking itself — when they want to
+    // meet, what about, and what they actually wrote — not just a count.
+    [Fact]
+    public async Task GetUserDetail_CarriesTheirBookingsWithScheduleAndMessage()
+    {
+        var user = await AuthedUserClientAsync("uid-admin-detail-bookings");
+        await user.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Booking Detail", new DateOnly(1992, 7, 4), new TimeOnly(6, 20), false,
+            "Chennai, Tamil Nadu, India", 13.0827, 80.2707, "Asia/Kolkata"));
+        await user.PostAsJsonAsync("/consult/appointments", new BookAppointmentRequest(
+            "Career", "booking@example.com", "Should I take the new offer?",
+            new DateOnly(2026, 12, 9), new TimeOnly(16, 45)));
+        var me = await user.GetFromJsonAsync<JsonElement>("/me");
+
+        var admin = await AuthedAdminClientAsync();
+        var detail = await admin.GetFromJsonAsync<AdminUserDetail>(
+            $"/admin/users/{me.GetProperty("id").GetGuid()}");
+
+        var booking = Assert.Single(detail!.Bookings);
+        Assert.Equal("Career", booking.Area);
+        Assert.Equal(new DateOnly(2026, 12, 9), booking.PreferredDate);
+        Assert.Equal(new TimeOnly(16, 45), booking.PreferredTime);
+        Assert.Equal("Should I take the new offer?", booking.Message);
+        Assert.Equal("booking@example.com", booking.Email);
+        Assert.Equal("Pending", booking.Status);
+        // Time of birth travels with the date — a reading needs both.
+        Assert.Equal(new TimeOnly(6, 20), detail.Tob);
+    }
+
     [Fact]
     public async Task GetUserDetail_ForUnknownId_Returns404()
     {
