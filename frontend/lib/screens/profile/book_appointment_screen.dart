@@ -211,7 +211,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        'I authorize the Traffic Jam team to use my birth details and '
+                        'I authorize the TrafficJam.Life team to use my birth details and '
                         'chart context during the consultation for an accurate reading.',
                         style: AppText.sans(
                             size: 13, color: AppColors.textTan, height: 1.5),

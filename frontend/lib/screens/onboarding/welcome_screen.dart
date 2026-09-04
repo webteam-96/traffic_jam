@@ -21,7 +21,7 @@ class WelcomeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionLabel('WELCOME TO TRAFFIC JAM'),
+          const SectionLabel('WELCOME TO TRAFFICJAM.LIFE'),
           const SizedBox(height: AppSpacing.md),
           Text('Your day,\ndecoded.',
               style: AppText.serif(size: 40, weight: FontWeight.w700, height: 1.1)),

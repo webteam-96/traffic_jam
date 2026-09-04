@@ -81,7 +81,7 @@ class AboutJayKotechaScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  'Jay founded Traffic Jam for Life to democratize access to authentic, '
+                  'Jay founded TrafficJam.Life to democratize access to authentic, '
                   'birth-chart-level guidance — moving astrology from entertainment to a daily '
                   'decision engine for the modern seeker.',
                   style: AppText.body.copyWith(color: AppColors.amber),

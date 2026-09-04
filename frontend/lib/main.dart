@@ -24,7 +24,7 @@ class TrafficJamApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Traffic Jam',
+      title: 'TrafficJam.Life',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const _RootGate(),

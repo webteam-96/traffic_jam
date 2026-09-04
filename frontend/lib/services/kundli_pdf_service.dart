@@ -101,7 +101,7 @@ class KundliPdfService {
         alignment: pw.Alignment.center,
         margin: const pw.EdgeInsets.only(top: 12),
         child: pw.Text(
-          'Traffic Jam · Vedic Astrology Report',
+          'TrafficJam.Life · Vedic Astrology Report',
           style: pw.TextStyle(fontSize: 8, color: _muted),
         ),
       );
@@ -140,7 +140,7 @@ class KundliPdfService {
               decoration: pw.BoxDecoration(color: _goldPale, shape: pw.BoxShape.circle, border: pw.Border.all(color: _gold, width: 1.5)),
             ),
             pw.SizedBox(height: 18),
-            pw.Text('TRAFFIC JAM', style: pw.TextStyle(fontSize: 12, letterSpacing: 3, color: _gold, fontWeight: pw.FontWeight.bold)),
+            pw.Text('TrafficJam.Life', style: pw.TextStyle(fontSize: 12, letterSpacing: 1, color: _gold, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 4),
             pw.Text('VEDIC ASTROLOGY REPORT', style: pw.TextStyle(fontSize: 10, letterSpacing: 2, color: _muted)),
             pw.SizedBox(height: 24),
@@ -508,7 +508,7 @@ class KundliPdfService {
           children: [
             pw.Text('THANK YOU FOR READING', style: pw.TextStyle(fontSize: 9, letterSpacing: 2, color: _muted)),
             pw.SizedBox(height: 8),
-            pw.Text('Generated with Traffic Jam', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: _ink)),
+            pw.Text('Generated with TrafficJam.Life', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: _ink)),
             pw.SizedBox(height: 16),
             pw.Text('— END OF REPORT —', style: pw.TextStyle(fontSize: 9, color: _gold)),
           ],

@@ -215,8 +215,8 @@ class AppNavDrawer extends StatelessWidget {
                   children: [
                     const Icon(Icons.auto_awesome, color: AppColors.gold, size: 20),
                     const SizedBox(width: 10),
-                    Text('TRAFFIC JAM',
-                        style: AppText.logoFont(size: 18, letterSpacing: 1.6)),
+                    Text('TrafficJam.Life',
+                        style: AppText.logoFont(size: 18, letterSpacing: 0.4)),
                   ],
                 ),
               ),

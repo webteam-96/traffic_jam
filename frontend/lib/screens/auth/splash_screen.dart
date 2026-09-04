@@ -36,12 +36,15 @@ class SplashScreen extends StatelessWidget {
                     const OrbitLoader(size: 140),
                     const SizedBox(height: AppSpacing.section),
                     Text(
-                      'TRAFFIC JAM',
+                      'TrafficJam.Life',
                       textAlign: TextAlign.center,
                       style: AppText.logoFont(
                         size: 28,
                         color: AppColors.textPrimary,
-                        letterSpacing: 2,
+                        // Tighter than the old all-caps wordmark: wide tracking
+                        // reads as deliberate on capitals but as gappy on mixed
+                        // case, and it pushes the ".Life" away from the name.
+                        letterSpacing: 0.5,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.sm),

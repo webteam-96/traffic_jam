@@ -42,8 +42,8 @@ class AppTopBar extends StatelessWidget {
               const SizedBox(width: AppSpacing.lg),
               Image.asset(figmaAsset(Assets.logo), width: 24, height: 24),
               const SizedBox(width: AppSpacing.sm),
-              Text('TRAFFIC JAM',
-                  style: AppText.logoFont(size: 18, letterSpacing: 1.8)),
+              Text('TrafficJam.Life',
+                  style: AppText.logoFont(size: 18, letterSpacing: 0.4)),
               const Spacer(),
               GestureDetector(
                 onTap: onFoundations,
