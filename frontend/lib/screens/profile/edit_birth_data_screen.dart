@@ -21,7 +21,6 @@ class EditBirthDataScreen extends StatefulWidget {
 
 class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   final _name = TextEditingController();
-  final _citySearch = TextEditingController();
   DateTime? _dob;
   TimeOfDay _tob = const TimeOfDay(hour: 6, minute: 0);
   bool _unknownTime = false;
@@ -40,14 +39,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _citySearch.dispose();
     super.dispose();
-  }
-
-  List<CityEntry> get _filteredCities {
-    final q = _citySearch.text.trim();
-    if (q.isEmpty) return _popularCities;
-    return WorldCities.search(_allCities, q);
   }
 
   Future<void> _load() async {
@@ -230,67 +222,15 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
           const SectionLabel('PLACE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          if (_selectedCity != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text('Current: ${_selectedCity!.displayName}',
-                  style: AppText.sans(size: 13, color: AppColors.textMuted)),
-            ),
-          TextField(
-            controller: _citySearch,
-            textCapitalization: TextCapitalization.words,
-            cursorColor: AppColors.gold,
-            style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search your city',
-              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
-              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.gold),
-              filled: true,
-              fillColor: AppColors.bgDeep,
-              contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 16),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.gold),
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
+          // No separate "Current: …" line any more — the collapsed card below
+          // is the saved place, shown until a new search is started.
+          CityField(
+            cities: _allCities,
+            popular: _popularCities,
+            selected: _selectedCity,
+            loading: _loading,
+            onSelected: (city) => setState(() => _selectedCity = city),
           ),
-          const SizedBox(height: AppSpacing.md),
-          if (_filteredCities.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text('No cities match your search.', style: AppText.body),
-            )
-          else
-            for (final city in _filteredCities) ...[
-              GlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-                borderColor: city.displayName == _selectedCity?.displayName
-                    ? AppColors.gold
-                    : AppColors.borderFaint,
-                onTap: () => setState(() => _selectedCity = city),
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on,
-                        color: city.displayName == _selectedCity?.displayName
-                            ? AppColors.gold
-                            : AppColors.textMuted),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(city.displayName,
-                          style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
-                    ),
-                    if (city.displayName == _selectedCity?.displayName)
-                      const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
           const SizedBox(height: AppSpacing.lg),
 
           GoldButton(

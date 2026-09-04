@@ -17,8 +17,7 @@ class BirthPlaceScreen extends StatefulWidget {
 }
 
 class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
-  final _search = TextEditingController();
-  String? _selectedCity = OnboardingData.place;
+  CityEntry? _selectedCity;
   List<CityEntry> _allCities = const [];
   List<CityEntry> _popular = const [];
   bool _loading = true;
@@ -31,15 +30,14 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
       setState(() {
         _allCities = cities;
         _popular = cities.where((c) => c.country == 'India').take(8).toList();
+        // Coming back to this step, re-select whatever was chosen before so
+        // the field opens showing that place instead of starting over.
+        _selectedCity = cities
+            .where((c) => c.displayName == OnboardingData.place)
+            .firstOrNull;
         _loading = false;
       });
     });
-  }
-
-  List<CityEntry> get _filtered {
-    final q = _search.text.trim();
-    if (q.isEmpty) return _popular;
-    return WorldCities.search(_allCities, q);
   }
 
   void _select(CityEntry city) {
@@ -47,18 +45,12 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
     OnboardingData.lat = city.lat;
     OnboardingData.lng = city.lng;
     OnboardingData.timezone = city.timezone;
-    setState(() => _selectedCity = city.displayName);
+    setState(() => _selectedCity = city);
   }
 
   void _continue(BuildContext context) {
     if (_selectedCity == null) return;
     goToConsent(context);
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
   }
 
   @override
@@ -93,85 +85,13 @@ class _BirthPlaceScreenState extends State<BirthPlaceScreen> {
           const SizedBox(height: AppSpacing.section),
           const SectionLabel('SEARCH CITY'),
           const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _search,
-            textCapitalization: TextCapitalization.words,
-            cursorColor: AppColors.gold,
-            style: AppText.sans(
-              size: 16,
-              weight: FontWeight.w500,
-              color: AppColors.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Search your city',
-              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
-              prefixIcon: const Icon(Icons.location_on_outlined,
-                  color: AppColors.gold),
-              filled: true,
-              fillColor: AppColors.bgDeep,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md, vertical: 16),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.gold),
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
+          CityField(
+            cities: _allCities,
+            popular: _popular,
+            selected: _selectedCity,
+            loading: _loading,
+            onSelected: _select,
           ),
-          const SizedBox(height: AppSpacing.xl),
-          SectionLabel(_search.text.trim().isEmpty ? 'SUGGESTIONS' : 'RESULTS'),
-          const SizedBox(height: AppSpacing.md),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Center(
-                child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-              ),
-            )
-          else if (_filtered.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Text('No cities match your search.', style: AppText.body),
-            )
-          else
-            for (final city in _filtered) ...[
-              GlassCard(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-                borderColor: city.displayName == _selectedCity
-                    ? AppColors.gold
-                    : AppColors.borderFaint,
-                onTap: () => _select(city),
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on,
-                        color: city.displayName == _selectedCity
-                            ? AppColors.gold
-                            : AppColors.textMuted),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(
-                        city.displayName,
-                        style: AppText.sans(
-                          size: 15,
-                          weight: FontWeight.w500,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (city.displayName == _selectedCity)
-                      const Icon(Icons.check_circle,
-                          color: AppColors.gold, size: 20),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
           const SizedBox(height: AppSpacing.lg),
           GoldButton(
             label: 'CONTINUE',

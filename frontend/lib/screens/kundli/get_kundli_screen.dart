@@ -22,7 +22,6 @@ class GetKundliScreen extends StatefulWidget {
 
 class _GetKundliScreenState extends State<GetKundliScreen> {
   final _name = TextEditingController();
-  final _citySearch = TextEditingController();
 
   DateTime? _dob;
   TimeOfDay _tob = const TimeOfDay(hour: 6, minute: 0);
@@ -47,14 +46,7 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _citySearch.dispose();
     super.dispose();
-  }
-
-  List<CityEntry> get _filteredCities {
-    final q = _citySearch.text.trim();
-    if (q.isEmpty) return _popularCities;
-    return WorldCities.search(_allCities, q);
   }
 
   bool get _canGenerate =>
@@ -197,60 +189,14 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
 
           const SectionLabel('PLACE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _citySearch,
-            cursorColor: AppColors.gold,
-            style: AppText.sans(size: 16, weight: FontWeight.w500, color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search city',
-              hintStyle: AppText.sans(size: 16, color: AppColors.textMuted),
-              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.gold),
-              filled: true,
-              fillColor: AppColors.bgDeep,
-              contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 16),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.goldBorderSoft),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                borderSide: const BorderSide(color: AppColors.gold),
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
+          CityField(
+            cities: _allCities,
+            popular: _popularCities,
+            selected: _selectedCity,
+            loading: _allCities.isEmpty,
+            hintText: 'Search city',
+            onSelected: (city) => setState(() => _selectedCity = city),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          if (_filteredCities.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text('No cities match your search.', style: AppText.body),
-            )
-          else
-            for (final city in _filteredCities) ...[
-              GlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-                borderColor: city.displayName == _selectedCity?.displayName
-                    ? AppColors.gold
-                    : AppColors.borderFaint,
-                onTap: () => setState(() => _selectedCity = city),
-                child: Row(
-                  children: [
-                    Icon(Icons.location_on,
-                        color: city.displayName == _selectedCity?.displayName
-                            ? AppColors.gold
-                            : AppColors.textMuted),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(city.displayName,
-                          style: AppText.sans(size: 15, weight: FontWeight.w500, color: AppColors.textPrimary)),
-                    ),
-                    if (city.displayName == _selectedCity?.displayName)
-                      const Icon(Icons.check_circle, color: AppColors.gold, size: 20),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
           const SizedBox(height: AppSpacing.lg),
 
           GoldButton(
