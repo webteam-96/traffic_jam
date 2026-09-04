@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { StatusPill } from "../components/StatusPill";
+import { UserDrawer } from "../components/UserDrawer";
 import { useToast } from "../lib/toast";
 
 interface Appointment {
   id: string;
+  userId: string;
   userName: string | null;
   area: string;
   email: string;
@@ -37,6 +39,7 @@ const STATUS_OPTIONS = ["Pending", "Confirmed", "Completed", "Cancelled"];
 export function Appointments() {
   const [filter, setFilter] = useState("Pending");
   const [items, setItems] = useState<Appointment[] | null>(null);
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
   const toast = useToast();
 
   const load = () => {
@@ -86,7 +89,22 @@ export function Appointments() {
         <div className="table-card">
           <div className="row-list">
             {items.map((a) => (
-              <div key={a.id} className="row">
+              // Row opens that person's full user drawer; the status dropdown
+              // stops its own clicks from bubbling so changing a status
+              // doesn't also open the drawer.
+              <div
+                key={a.id}
+                className="row row--clickable"
+                role="button"
+                tabIndex={0}
+                onClick={() => setOpenUserId(a.userId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setOpenUserId(a.userId);
+                  }
+                }}
+              >
                 <div className="row__main">
                   <div className="row__title">
                     {a.userName ?? "Unnamed user"} · {a.area}
@@ -105,7 +123,11 @@ export function Appointments() {
                 <StatusPill status={a.status} />
                 <select
                   value={a.status}
-                  onChange={(e) => updateStatus(a.id, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    updateStatus(a.id, e.target.value);
+                  }}
                   style={{
                     background: "var(--surface)",
                     border: "1px solid var(--border-strong)",
@@ -126,6 +148,8 @@ export function Appointments() {
           </div>
         </div>
       )}
+
+      {openUserId && <UserDrawer id={openUserId} onClose={() => setOpenUserId(null)} />}
     </div>
   );
 }

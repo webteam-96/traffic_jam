@@ -5,7 +5,7 @@ using TrafficJam.Api.Data.Entities;
 namespace TrafficJam.Api.Modules.Admin;
 
 public record AdminAppointmentSummary(
-    Guid Id, string? UserName, string Area, string Email, string? Message,
+    Guid Id, Guid UserId, string? UserName, string Area, string Email, string? Message,
     DateOnly PreferredDate, TimeOnly PreferredTime, string Status, DateTime CreatedAt,
     string? BirthPlace, DateOnly? Dob, TimeOnly? Tob, bool? UnknownTime);
 
@@ -41,7 +41,7 @@ public static class AdminAppointmentEndpoints
                 .ToListAsync(ct);
 
             var summaries = appointments.Select(a => new AdminAppointmentSummary(
-                a.Id, a.User.Name, a.Area, a.Email, a.Message,
+                a.Id, a.UserId, a.User.Name, a.Area, a.Email, a.Message,
                 a.PreferredDate, a.PreferredTime, a.Status.ToString(), a.CreatedAt,
                 a.User.BirthData?.Place, a.User.BirthData?.Dob, a.User.BirthData?.Tob, a.User.BirthData?.UnknownTime));
 

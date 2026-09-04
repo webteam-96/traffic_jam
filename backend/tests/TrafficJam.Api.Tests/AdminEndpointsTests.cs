@@ -321,6 +321,33 @@ public class AdminEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         Assert.False(entry.GetProperty("unknownTime").GetBoolean());
     }
 
+    // The admin panel's appointment rows open that person's user drawer, which
+    // fetches /admin/users/{id} — so the listing has to carry a userId that
+    // actually resolves there, not just a name string.
+    [Fact]
+    public async Task GetAppointments_CarriesAUserIdThatResolvesToThatUser()
+    {
+        var user = await AuthedUserClientAsync("uid-admin-appt-userid");
+        await user.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Appointment Owner", new DateOnly(1991, 3, 8), new TimeOnly(9, 15), false,
+            "Pune, Maharashtra, India", 18.5196, 73.8553, "Asia/Kolkata"));
+        var booked = await (await user.PostAsJsonAsync("/consult/appointments", new BookAppointmentRequest(
+            "Career", "owner@example.com", null, new DateOnly(2026, 12, 3), new TimeOnly(12, 0))))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var admin = await AuthedAdminClientAsync();
+        var list = await admin.GetFromJsonAsync<JsonElement>("/admin/appointments?status=Pending&pageSize=100");
+        var entry = list.GetProperty("appointments").EnumerateArray()
+            .Single(a => a.GetProperty("id").GetGuid() == booked!.AppointmentId);
+
+        var userId = entry.GetProperty("userId").GetGuid();
+        Assert.NotEqual(Guid.Empty, userId);
+
+        var detail = await admin.GetFromJsonAsync<AdminUserDetail>($"/admin/users/{userId}");
+        Assert.Equal("Appointment Owner", detail!.Name);
+        Assert.Equal("Pune, Maharashtra, India", detail.BirthPlace);
+    }
+
     [Fact]
     public async Task UpdateAppointmentStatus_WithInvalidStatus_Returns400()
     {
