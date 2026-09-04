@@ -103,6 +103,15 @@ class _KundliScreenState extends State<KundliScreen> {
   bool _loading = false;
   String? _error; // 'no-data' | 'generic' | null
 
+  // Real name + formatted DOB for "My Kundli" — KundliProfile.own is a
+  // static placeholder ("You" / a fixed mock date, see kundli_profile.dart),
+  // not the signed-in user's actual birth data, so the identity one-liner
+  // below needs its own fetch rather than trusting profile.name/profile.dob
+  // for the isOwn case (same reason _downloadPdf already re-fetches this
+  // separately for the PDF's cover page).
+  String? _ownName;
+  String? _ownDobDisplay;
+
   static const _sections = ['Planet', 'Dasha', 'Charts', 'KP System', 'Cusp', 'Doshas'];
 
   KundliProfile get _profile => widget.profile ?? KundliProfile.own;
@@ -112,6 +121,7 @@ class _KundliScreenState extends State<KundliScreen> {
     super.initState();
     if (_profile.isOwn) {
       _load();
+      _loadOwnIdentity();
     } else {
       // Already computed by get_kundli_screen.dart before this screen was
       // pushed — nothing to fetch.
@@ -119,6 +129,33 @@ class _KundliScreenState extends State<KundliScreen> {
       _dasha = _profile.dasha;
       _doshas = _profile.doshas;
     }
+  }
+
+  Future<void> _loadOwnIdentity() async {
+    try {
+      final birthData = await UserApi.getBirthData();
+      if (birthData == null || !mounted) return;
+      final dobDate = DateTime.parse(birthData['dob'] as String);
+      setState(() {
+        _ownName = (birthData['name'] as String?)?.trim().isNotEmpty == true
+            ? birthData['name'] as String
+            : null;
+        _ownDobDisplay =
+            '${dobDate.day} ${_monthNamesFull[dobDate.month - 1]} ${dobDate.year}';
+      });
+    } catch (_) {
+      // Transient error — the header just falls back to the placeholder
+      // name/date rather than blocking the rest of the Kundli.
+    }
+  }
+
+  /// First word of the nakshatra string (e.g. "Krittika" from the chart's
+  /// "Krittika-3" pada notation) — the compact identity marker for the
+  /// one-liner header, same source as Profile's own Astro Identity card.
+  String? _nakshatraLabel(Map<String, dynamic>? chart) {
+    final raw = chart?['nakshatra'] as String?;
+    if (raw == null || raw.isEmpty) return null;
+    return raw.split('-').first;
   }
 
   Future<void> _load() async {
@@ -240,8 +277,24 @@ class _KundliScreenState extends State<KundliScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!profile.isOwn) ...[
-            _ProfileBanner(profile: profile),
+          if (profile.isOwn) ...[
+            // A quick "yes, this is me" confirmation — the one thing missing
+            // for "My Kundli" that generated profiles already got from
+            // _ProfileBanner below.
+            Center(
+              child: Text(
+                [
+                  _ownName ?? profile.name,
+                  _ownDobDisplay ?? profile.dob,
+                  ?_nakshatraLabel(_chart),
+                ].join('  ·  '),
+                textAlign: TextAlign.center,
+                style: AppText.sans(size: 13, color: AppColors.textMuted),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ] else ...[
+            _ProfileBanner(profile: profile, nakshatra: _nakshatraLabel(profile.chart)),
             const SizedBox(height: AppSpacing.xl),
           ],
           const Center(child: SectionLabel('BIRTH CHART')),
@@ -323,8 +376,9 @@ class _KundliScreenState extends State<KundliScreen> {
 // Generated-profile banner — shown above the tabs for anyone but "My Kundli"
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProfileBanner extends StatelessWidget {
-  const _ProfileBanner({required this.profile});
+  const _ProfileBanner({required this.profile, this.nakshatra});
   final KundliProfile profile;
+  final String? nakshatra;
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +400,12 @@ class _ProfileBanner extends StatelessWidget {
                     style: AppText.serif(size: 18, weight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
-                  '${profile.dob} · ${profile.tobUnknown ? "Time unknown" : profile.tob} · ${profile.place}',
+                  [
+                    profile.dob,
+                    profile.tobUnknown ? 'Time unknown' : profile.tob,
+                    profile.place,
+                    ?nakshatra,
+                  ].join(' · '),
                   style: AppText.sans(size: 12, color: AppColors.textMuted),
                 ),
               ],
