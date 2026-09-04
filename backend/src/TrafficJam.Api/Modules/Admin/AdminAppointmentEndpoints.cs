@@ -6,7 +6,8 @@ namespace TrafficJam.Api.Modules.Admin;
 
 public record AdminAppointmentSummary(
     Guid Id, string? UserName, string Area, string Email, string? Message,
-    DateOnly PreferredDate, TimeOnly PreferredTime, string Status, DateTime CreatedAt);
+    DateOnly PreferredDate, TimeOnly PreferredTime, string Status, DateTime CreatedAt,
+    string? BirthPlace, DateOnly? Dob, TimeOnly? Tob, bool? UnknownTime);
 
 public record AdminUpdateAppointmentStatusRequest(string Status);
 
@@ -19,7 +20,14 @@ public static class AdminAppointmentEndpoints
             page = page <= 0 ? 1 : page;
             pageSize = pageSize is <= 0 or > 100 ? 25 : pageSize;
 
-            var query = db.Appointments.Include(a => a.User).AsQueryable();
+            // Materialized (not a .Select() projection) before mapping to
+            // AdminAppointmentSummary — BirthData's Dob/Place/Tob are AES
+            // encrypted at rest via EF value converters (see BirthData.cs),
+            // and letting EF hydrate real entities first, the same pattern
+            // AdminUserEndpoints' user-detail lookup already uses, is the
+            // safe way to get decrypted values rather than projecting the
+            // encrypted columns directly in a server-translated query.
+            var query = db.Appointments.Include(a => a.User).ThenInclude(u => u.BirthData).AsQueryable();
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AppointmentStatus>(status, true, out var parsed))
             {
                 query = query.Where(a => a.Status == parsed);
@@ -30,12 +38,14 @@ public static class AdminAppointmentEndpoints
                 .OrderBy(a => a.Status == AppointmentStatus.Pending ? 0 : 1)
                 .ThenBy(a => a.PreferredDate).ThenBy(a => a.PreferredTime)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(a => new AdminAppointmentSummary(
-                    a.Id, a.User.Name, a.Area, a.Email, a.Message,
-                    a.PreferredDate, a.PreferredTime, a.Status.ToString(), a.CreatedAt))
                 .ToListAsync(ct);
 
-            return Results.Ok(new { appointments, totalCount });
+            var summaries = appointments.Select(a => new AdminAppointmentSummary(
+                a.Id, a.User.Name, a.Area, a.Email, a.Message,
+                a.PreferredDate, a.PreferredTime, a.Status.ToString(), a.CreatedAt,
+                a.User.BirthData?.Place, a.User.BirthData?.Dob, a.User.BirthData?.Tob, a.User.BirthData?.UnknownTime));
+
+            return Results.Ok(new { appointments = summaries, totalCount });
         }).RequireAuthorization("AdminOnly");
 
         app.MapPatch("/admin/appointments/{id:guid}/status", async (

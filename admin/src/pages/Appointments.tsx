@@ -13,6 +13,22 @@ interface Appointment {
   preferredTime: string;
   status: string;
   createdAt: string;
+  birthPlace: string | null;
+  dob: string | null;
+  tob: string | null;
+  unknownTime: boolean | null;
+}
+
+// e.g. "15 May 1990, 2:30 PM" / "15 May 1990, time unknown" — the birth
+// details someone fulfilling the consultation actually needs, not shown
+// anywhere else on this page.
+function birthSummary(a: Appointment): string | null {
+  if (!a.dob) return null;
+  const dob = new Date(a.dob).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const time = a.unknownTime || !a.tob
+    ? "time unknown"
+    : new Date(`1970-01-01T${a.tob}`).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return [dob, time, a.birthPlace].filter(Boolean).join(", ");
 }
 
 const FILTERS = ["All", "Pending", "Confirmed", "Completed", "Cancelled"];
@@ -78,6 +94,9 @@ export function Appointments() {
                   <div className="row__sub">
                     {a.email}
                     {a.message ? ` — "${a.message}"` : ""}
+                  </div>
+                  <div className="row__sub" style={{ opacity: 0.75 }}>
+                    {birthSummary(a) ?? "No birth data yet"}
                   </div>
                 </div>
                 <div className="row__meta">

@@ -294,6 +294,33 @@ public class AdminEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
             a => a.GetProperty("id").GetGuid() == booked.AppointmentId);
     }
 
+    // Regression guard for the encrypted-field read path: BirthData's
+    // Dob/Tob/Place are AES encrypted at rest, and the admin appointments
+    // list materializes real entities (rather than a raw .Select()
+    // projection) specifically so EF's value converters actually decrypt
+    // them — this proves that round-trip actually works, not just compiles.
+    [Fact]
+    public async Task GetAppointments_IncludesTheUsersBirthDetails()
+    {
+        var user = await AuthedUserClientAsync("uid-admin-appt-birthdata");
+        await user.PutAsJsonAsync("/me/birth-data", new BirthDataRequest(
+            "Birth Data Test", new DateOnly(1990, 5, 15), new TimeOnly(14, 30), false,
+            "Mumbai, Maharashtra, India", 19.0760, 72.8777, "Asia/Kolkata"));
+        var booked = await (await user.PostAsJsonAsync("/consult/appointments", new BookAppointmentRequest(
+            "Career", "test@example.com", null, new DateOnly(2026, 12, 2), new TimeOnly(11, 0))))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var admin = await AuthedAdminClientAsync();
+        var list = await admin.GetFromJsonAsync<JsonElement>("/admin/appointments?status=Pending&pageSize=100");
+        var entry = list.GetProperty("appointments").EnumerateArray()
+            .Single(a => a.GetProperty("id").GetGuid() == booked!.AppointmentId);
+
+        Assert.Equal("Mumbai, Maharashtra, India", entry.GetProperty("birthPlace").GetString());
+        Assert.Equal("1990-05-15", entry.GetProperty("dob").GetString());
+        Assert.Equal("14:30:00", entry.GetProperty("tob").GetString());
+        Assert.False(entry.GetProperty("unknownTime").GetBoolean());
+    }
+
     [Fact]
     public async Task UpdateAppointmentStatus_WithInvalidStatus_Returns400()
     {
