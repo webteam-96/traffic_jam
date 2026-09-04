@@ -23,9 +23,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
   final _name = TextEditingController();
   final _citySearch = TextEditingController();
   DateTime? _dob;
-  int _hour = 6;
-  int _minute = 0;
-  bool _isAm = true;
+  TimeOfDay _tob = const TimeOfDay(hour: 6, minute: 0);
   bool _unknownTime = false;
   CityEntry? _selectedCity;
   List<CityEntry> _allCities = const [];
@@ -68,10 +66,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
         final tob = data['tob'] as String?;
         if (tob != null) {
           final parts = tob.split(':');
-          final h24 = int.parse(parts[0]);
-          _minute = int.parse(parts[1]);
-          _isAm = h24 < 12;
-          _hour = h24 % 12 == 0 ? 12 : h24 % 12;
+          _tob = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
         }
         savedPlace = data['place'] as String?;
         savedLat = (data['lat'] as num?)?.toDouble();
@@ -114,52 +109,16 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
   bool get _canSave => _dob != null && _selectedCity != null && !_saving;
 
-  Future<void> _pickDob() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dob ?? DateTime(now.year - 25),
-      firstDate: DateTime(1900),
-      lastDate: now,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.gold,
-            onPrimary: AppColors.textOnGold,
-            surface: AppColors.navBarBase,
-            onSurface: AppColors.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _dob = picked);
-  }
-
-  void _bumpTime(int hourDelta, int minuteDelta) {
-    if (_unknownTime) return;
-    setState(() {
-      if (hourDelta != 0) {
-        _hour += hourDelta;
-        if (_hour > 12) _hour = 1;
-        if (_hour < 1) _hour = 12;
-      }
-      if (minuteDelta != 0) _minute = (_minute + minuteDelta + 60) % 60;
-    });
-  }
-
   Future<void> _save() async {
     if (!_canSave) return;
     setState(() => _saving = true);
     try {
       final city = _selectedCity!;
-      var hour24 = _hour % 12;
-      if (!_isAm) hour24 += 12;
       await UserApi.saveBirthData(
         name: _name.text.trim().isEmpty ? null : _name.text.trim(),
         dob: _dob!,
-        hour24: _unknownTime ? null : hour24,
-        minute: _unknownTime ? null : _minute,
+        hour24: _unknownTime ? null : _tob.hour,
+        minute: _unknownTime ? null : _tob.minute,
         unknownTime: _unknownTime,
         place: city.displayName,
         lat: city.lat,
@@ -180,11 +139,6 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
     }
   }
 
-  String _pad(int v) => v.toString().padLeft(2, '0');
-  String _monthName(int m) => const [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-      ][m - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -237,24 +191,9 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
 
           const SectionLabel('DATE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-            onTap: _pickDob,
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_month, color: AppColors.gold),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    _dob == null
-                        ? 'Select date of birth'
-                        : '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
-                    style: AppText.serif(size: 18, weight: FontWeight.w600),
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 20),
-              ],
-            ),
+          BirthDateField(
+            date: _dob,
+            onChanged: (d) => setState(() => _dob = d),
           ),
           const SizedBox(height: AppSpacing.xl),
 
@@ -262,26 +201,10 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
           const SizedBox(height: AppSpacing.md),
           Opacity(
             opacity: _unknownTime ? 0.4 : 1,
-            child: GlassCard(
-              goldTopBorder: true,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _TimeUnit(value: _pad(_hour), onUp: () => _bumpTime(1, 0), onDown: () => _bumpTime(-1, 0)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                    child: Text(':',
-                        style: AppText.serif(size: 32, weight: FontWeight.w700, color: AppColors.amber)),
-                  ),
-                  _TimeUnit(value: _pad(_minute), onUp: () => _bumpTime(0, 1), onDown: () => _bumpTime(0, -1)),
-                  const SizedBox(width: AppSpacing.md),
-                  _TimeUnit(
-                    value: _isAm ? 'AM' : 'PM',
-                    onUp: _unknownTime ? null : () => setState(() => _isAm = !_isAm),
-                    onDown: _unknownTime ? null : () => setState(() => _isAm = !_isAm),
-                  ),
-                ],
-              ),
+            child: BirthTimeField(
+              time: _tob,
+              enabled: !_unknownTime,
+              onChanged: (t) => setState(() => _tob = t),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -380,34 +303,4 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
       ),
     );
   }
-}
-
-class _TimeUnit extends StatelessWidget {
-  const _TimeUnit({required this.value, this.onUp, this.onDown});
-  final String value;
-  final VoidCallback? onUp;
-  final VoidCallback? onDown;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _chevron(Icons.keyboard_arrow_up, onUp),
-        const SizedBox(height: AppSpacing.xs),
-        Text(value, style: AppText.serif(size: 32, weight: FontWeight.w700)),
-        const SizedBox(height: AppSpacing.xs),
-        _chevron(Icons.keyboard_arrow_down, onDown),
-      ],
-    );
-  }
-
-  Widget _chevron(IconData icon, VoidCallback? onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
-          child: Icon(icon, size: 20, color: onTap == null ? AppColors.textMuted : AppColors.gold),
-        ),
-      );
 }

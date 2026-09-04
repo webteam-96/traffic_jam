@@ -25,9 +25,7 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
   final _citySearch = TextEditingController();
 
   DateTime? _dob;
-  int _hour = 6;
-  int _minute = 0;
-  bool _isAm = true;
+  TimeOfDay _tob = const TimeOfDay(hour: 6, minute: 0);
   bool _tobUnknown = false;
   CityEntry? _selectedCity;
   List<CityEntry> _allCities = const [];
@@ -62,54 +60,16 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
   bool get _canGenerate =>
       _name.text.trim().isNotEmpty && _dob != null && _selectedCity != null;
 
-  String _pad(int v) => v.toString().padLeft(2, '0');
-
-  Future<void> _pickDob() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime(now.year - 25),
-      firstDate: DateTime(1900),
-      lastDate: now,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.gold,
-            onPrimary: AppColors.textOnGold,
-            surface: AppColors.navBarBase,
-            onSurface: AppColors.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _dob = picked);
-  }
-
-  void _bump(int hourDelta, int minuteDelta) {
-    if (_tobUnknown) return;
-    setState(() {
-      if (hourDelta != 0) {
-        _hour += hourDelta;
-        if (_hour > 12) _hour = 1;
-        if (_hour < 1) _hour = 12;
-      }
-      if (minuteDelta != 0) _minute = (_minute + minuteDelta + 60) % 60;
-    });
-  }
-
   Future<void> _generate() async {
     if (!_canGenerate) return;
     setState(() => _generating = true);
     final city = _selectedCity!;
-    var hour24 = _hour % 12;
-    if (!_isAm) hour24 += 12;
 
     try {
       final computed = await ChartApi.compute(
         dob: _dob!,
-        hour24: _tobUnknown ? null : hour24,
-        minute: _tobUnknown ? null : _minute,
+        hour24: _tobUnknown ? null : _tob.hour,
+        minute: _tobUnknown ? null : _tob.minute,
         unknownTime: _tobUnknown,
         lat: city.lat,
         lng: city.lng,
@@ -122,7 +82,7 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
         name: _name.text.trim(),
         isOwn: false,
         dob: '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
-        tob: _tobUnknown ? '' : '${_pad(_hour)}:${_pad(_minute)} ${_isAm ? "AM" : "PM"}',
+        tob: _tobUnknown ? '' : _tob.format(context),
         tobUnknown: _tobUnknown,
         place: city.displayName,
         generatedOn: 'just now',
@@ -198,24 +158,9 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
 
           const SectionLabel('DATE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-            onTap: _pickDob,
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_month, color: AppColors.gold),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    _dob == null
-                        ? 'Select date of birth'
-                        : '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
-                    style: AppText.serif(size: 18, weight: FontWeight.w600),
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 20),
-              ],
-            ),
+          BirthDateField(
+            date: _dob,
+            onChanged: (d) => setState(() => _dob = d),
           ),
           const SizedBox(height: AppSpacing.xl),
 
@@ -223,26 +168,10 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
           const SizedBox(height: AppSpacing.md),
           Opacity(
             opacity: _tobUnknown ? 0.4 : 1,
-            child: GlassCard(
-              goldTopBorder: true,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _TimeUnit(value: _pad(_hour), onUp: () => _bump(1, 0), onDown: () => _bump(-1, 0)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                    child: Text(':',
-                        style: AppText.serif(size: 32, weight: FontWeight.w700, color: AppColors.amber)),
-                  ),
-                  _TimeUnit(value: _pad(_minute), onUp: () => _bump(0, 1), onDown: () => _bump(0, -1)),
-                  const SizedBox(width: AppSpacing.md),
-                  _TimeUnit(
-                    value: _isAm ? 'AM' : 'PM',
-                    onUp: _tobUnknown ? null : () => setState(() => _isAm = !_isAm),
-                    onDown: _tobUnknown ? null : () => setState(() => _isAm = !_isAm),
-                  ),
-                ],
-              ),
+            child: BirthTimeField(
+              time: _tob,
+              enabled: !_tobUnknown,
+              onChanged: (t) => setState(() => _tob = t),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -333,36 +262,6 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
       ),
     );
   }
-}
-
-class _TimeUnit extends StatelessWidget {
-  const _TimeUnit({required this.value, this.onUp, this.onDown});
-  final String value;
-  final VoidCallback? onUp;
-  final VoidCallback? onDown;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _chevron(Icons.keyboard_arrow_up, onUp),
-        const SizedBox(height: AppSpacing.xs),
-        Text(value, style: AppText.serif(size: 32, weight: FontWeight.w700)),
-        const SizedBox(height: AppSpacing.xs),
-        _chevron(Icons.keyboard_arrow_down, onDown),
-      ],
-    );
-  }
-
-  Widget _chevron(IconData icon, VoidCallback? onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xs),
-          child: Icon(icon, size: 20, color: onTap == null ? AppColors.textMuted : AppColors.gold),
-        ),
-      );
 }
 
 class _LoadingView extends StatelessWidget {

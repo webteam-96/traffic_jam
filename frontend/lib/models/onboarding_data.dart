@@ -9,9 +9,8 @@ class OnboardingData {
 
   static String? name;
   static DateTime? dob;
-  static int hour = 4; // 1..12
+  static int hour24 = 4; // 0..23
   static int minute = 42;
-  static bool isAm = true;
   static bool unknownTime = false;
   static String? place;
   static double? lat;
@@ -21,9 +20,8 @@ class OnboardingData {
   static void reset() {
     name = null;
     dob = null;
-    hour = 4;
+    hour24 = 4;
     minute = 42;
-    isAm = true;
     unknownTime = false;
     place = null;
     lat = null;

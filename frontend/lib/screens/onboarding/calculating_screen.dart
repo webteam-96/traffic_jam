@@ -58,12 +58,10 @@ class _CalculatingScreenState extends State<CalculatingScreen> {
   Future<void> _runSave() async {
     setState(() => _error = null);
     try {
-      var hour24 = OnboardingData.hour % 12;
-      if (!OnboardingData.isAm) hour24 += 12;
       await UserApi.saveBirthData(
         name: OnboardingData.name,
         dob: OnboardingData.dob!,
-        hour24: OnboardingData.unknownTime ? null : hour24,
+        hour24: OnboardingData.unknownTime ? null : OnboardingData.hour24,
         minute: OnboardingData.unknownTime ? null : OnboardingData.minute,
         unknownTime: OnboardingData.unknownTime,
         place: OnboardingData.place!,

@@ -20,33 +20,6 @@ class _IdentityScreenState extends State<IdentityScreen> {
 
   bool get _canContinue => _name.text.trim().isNotEmpty && _dob != null;
 
-  String _monthName(int m) => const [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-      ][m - 1];
-
-  Future<void> _pickDob() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dob ?? DateTime(now.year - 25),
-      firstDate: DateTime(1900),
-      lastDate: now,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.gold,
-            onPrimary: AppColors.textOnGold,
-            surface: AppColors.navBarBase,
-            onSurface: AppColors.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _dob = picked);
-  }
-
   void _continue(BuildContext context) {
     OnboardingData.name = _name.text.trim();
     OnboardingData.dob = _dob;
@@ -121,26 +94,9 @@ class _IdentityScreenState extends State<IdentityScreen> {
           const SizedBox(height: AppSpacing.xl),
           const SectionLabel('DATE OF BIRTH'),
           const SizedBox(height: AppSpacing.md),
-          GlassCard(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-            onTap: _pickDob,
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_month, color: AppColors.gold),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    _dob == null
-                        ? 'Select date of birth'
-                        : '${_dob!.day} ${_monthName(_dob!.month)} ${_dob!.year}',
-                    style: AppText.serif(size: 18, weight: FontWeight.w600),
-                  ),
-                ),
-                const Icon(Icons.chevron_right,
-                    color: AppColors.textMuted, size: 20),
-              ],
-            ),
+          BirthDateField(
+            date: _dob,
+            onChanged: (d) => setState(() => _dob = d),
           ),
           const SizedBox(height: AppSpacing.section),
           GoldButton(
