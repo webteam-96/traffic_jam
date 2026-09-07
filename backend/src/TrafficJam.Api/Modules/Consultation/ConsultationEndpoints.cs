@@ -104,14 +104,29 @@ public static class ConsultationEndpoints
         consult.MapGet("/questions/{id:guid}/messages", async (
             Guid id, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
         {
-            var owns = await db.Questions.AnyAsync(q => q.Id == id && q.UserId == principal.UserId(), ct);
-            if (!owns) return Results.NotFound();
+            var question = await db.Questions
+                .Where(q => q.Id == id && q.UserId == principal.UserId())
+                .Select(q => new { q.Id, q.Text, q.CreatedAt })
+                .SingleOrDefaultAsync(ct);
+            if (question is null) return Results.NotFound();
 
             var messages = await db.Messages
                 .Where(m => m.QuestionId == id)
                 .OrderBy(m => m.CreatedAt)
                 .Select(m => new MessageResponse(m.Id, m.Sender.ToString().ToLower(), m.Text, m.CreatedAt))
                 .ToListAsync(ct);
+
+            // The question that started the thread is stored on the Question
+            // itself, not as a Message, so a thread built only from Messages
+            // opens with the user's own words missing — they see Jay's reply
+            // to a question they can no longer read. Rather than duplicate the
+            // text into a Message row on ask (two copies of one string, free
+            // to drift, and no help to the questions already asked), the
+            // opening message is derived here. It carries the question's own
+            // id and timestamp, so it sorts and keys correctly alongside real
+            // messages.
+            messages.Insert(0, new MessageResponse(
+                question.Id, "user", question.Text, question.CreatedAt));
 
             return Results.Ok(messages);
         });

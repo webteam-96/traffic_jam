@@ -121,9 +121,60 @@ public class ConsultationEndpointsTests : IClassFixture<TrafficJamApiFactory>, I
         Assert.Equal(HttpStatusCode.OK, sendResponse.StatusCode);
 
         var thread = await client.GetFromJsonAsync<List<MessageResponse>>($"/consult/questions/{asked.QuestionId}/messages");
+        // Two: the question that opened the thread, then the follow-up.
+        Assert.Equal(2, thread!.Count);
+        Assert.Equal("user", thread[1].Sender);
+        Assert.Equal("Any update?", thread[1].Text);
+    }
+
+    // The question a user asks is stored on the Question, not as a Message, so
+    // a thread assembled only from Messages opened with the user's own words
+    // missing — they saw an answer to a question they could no longer read.
+    [Fact]
+    public async Task Messages_ThreadOpensWithTheQuestionThatStartedIt()
+    {
+        var client = await AuthedClientAsync("uid-ask-opening");
+        var asked = await (await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("career", "Should I take the offer?", "standard")))
+            .Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        var thread = await client.GetFromJsonAsync<List<MessageResponse>>(
+            $"/consult/questions/{asked!.QuestionId}/messages");
+
         Assert.Single(thread!);
         Assert.Equal("user", thread![0].Sender);
-        Assert.Equal("Any update?", thread[0].Text);
+        Assert.Equal("Should I take the offer?", thread[0].Text);
+        // Carries the question's own id, so it keys and sorts alongside real
+        // messages rather than needing a synthetic one.
+        Assert.Equal(asked.QuestionId, thread[0].Id);
+    }
+
+    [Fact]
+    public async Task Messages_OpeningQuestionSortsBeforeAnAstrologerReply()
+    {
+        var client = await AuthedClientAsync("uid-ask-order");
+        var asked = await (await client.PostAsJsonAsync("/consult/questions",
+            new AskQuestionRequest("health", "Why the fatigue?", "standard")))
+            .Content.ReadFromJsonAsync<AskQuestionResponse>();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Messages.Add(new Message
+            {
+                QuestionId = asked!.QuestionId,
+                Sender = MessageSender.Astrologer,
+                Text = "Saturn is transiting your 6th house.",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var thread = await client.GetFromJsonAsync<List<MessageResponse>>(
+            $"/consult/questions/{asked!.QuestionId}/messages");
+
+        Assert.Equal(2, thread!.Count);
+        Assert.Equal("Why the fatigue?", thread[0].Text);
+        Assert.Equal("astrologer", thread[1].Sender);
     }
 
     [Fact]

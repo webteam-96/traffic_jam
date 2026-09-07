@@ -21,6 +21,7 @@ class _AskChatScreenState extends State<AskChatScreen> {
   List<Map<String, dynamic>> _messages = [];
   bool _loading = true;
   bool _sending = false;
+  bool _errored = false;
 
   @override
   void initState() {
@@ -34,14 +35,22 @@ class _AskChatScreenState extends State<AskChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages = messages;
+        _errored = false;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
-      toast(context, "Couldn't load this conversation — check your connection.");
+      setState(() {
+        _loading = false;
+        _errored = true;
+      });
     }
   }
+
+  /// Retry / pull-to-refresh. Doubles as "has Jay replied yet?" — replies
+  /// aren't pushed to the app (no realtime yet), so pulling is the only way
+  /// to see one without leaving the screen and coming back.
+  Future<void> _refresh() => _load();
 
   @override
   void dispose() {
@@ -60,27 +69,42 @@ class _AskChatScreenState extends State<AskChatScreen> {
       setState(() => _messages = [..._messages, msg]);
     } on ApiException catch (e) {
       if (!mounted) return;
+      _restoreDraft(t);
       toast(context, e.message);
     } catch (_) {
       if (!mounted) return;
+      _restoreDraft(t);
       toast(context, "Couldn't send — check your connection.");
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
+  /// Put an unsent message back in the box. The input is cleared optimistically
+  /// the moment Send is tapped, so without this a failed send — the very case
+  /// a dropped connection causes — silently destroyed what the person typed
+  /// and left them to write it again from memory.
+  void _restoreDraft(String text) {
+    if (_input.text.isNotEmpty) return; // they've started typing something else
+    _input.text = text;
+    _input.selection = TextSelection.collapsed(offset: text.length);
+  }
+
   @override
   Widget build(BuildContext context) {
     return DetailScaffold(
       title: 'Jay',
-      scrollable: !_loading,
+      scrollable: !_loading && !_errored,
       bottomBar: _inputBar(),
       child: _loading
-          ? const Center(
-              child: CircularProgressIndicator(
-                  strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-            )
-          : Column(
+          ? const LoadingView(height: null)
+          : _errored
+              ? RetryView(
+                  height: null,
+                  message: "Couldn't load this conversation",
+                  onRetry: _refresh,
+                )
+              : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Context chips ─────────────────────────────────────
@@ -92,28 +116,29 @@ class _AskChatScreenState extends State<AskChatScreen> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                if (_messages.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
-                    child: Center(
-                      child: Text(
-                        'Your question has been sent to Jay. Replies will '
-                        'appear here within your plan\'s SLA window.',
-                        textAlign: TextAlign.center,
-                        style: AppText.sans(size: 14, color: AppColors.textTan),
-                      ),
-                    ),
-                  )
-                else ...[
+                Center(
+                  child: Text('THREAD',
+                      style: AppText.microLabel.copyWith(letterSpacing: 1.6)),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                for (final m in _messages) ...[
+                  _bubble(m),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                // Shown until Jay actually answers. Previously this stood in
+                // for the whole thread whenever there were no Message rows,
+                // which meant the user's own question — stored on the
+                // question, not as a message — was nowhere on screen.
+                if (!_messages.any((m) => m['sender'] == 'astrologer')) ...[
+                  const SizedBox(height: AppSpacing.md),
                   Center(
-                    child: Text('THREAD',
-                        style: AppText.microLabel.copyWith(letterSpacing: 1.6)),
+                    child: Text(
+                      'Your question has been sent to Jay. Replies will '
+                      'appear here within your plan\'s SLA window.',
+                      textAlign: TextAlign.center,
+                      style: AppText.sans(size: 14, color: AppColors.textTan),
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  for (final m in _messages) ...[
-                    _bubble(m),
-                    const SizedBox(height: AppSpacing.md),
-                  ],
                 ],
 
                 // Clearance so the last bubble sits above the pinned input bar.
@@ -248,18 +273,33 @@ class _AskChatScreenState extends State<AskChatScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.goldButton,
+                    // Dimmed while in flight, so the button itself reads as
+                    // busy rather than merely ignoring taps.
+                    color: _sending
+                        ? AppColors.goldButton.withValues(alpha: 0.5)
+                        : AppColors.goldButton,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.goldButton.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    boxShadow: _sending
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: AppColors.goldButton.withValues(alpha: 0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                   ),
-                  child: const Icon(Icons.arrow_upward,
-                      color: AppColors.textOnGold, size: 22),
+                  child: _sending
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor:
+                                AlwaysStoppedAnimation(AppColors.textOnGold),
+                          ),
+                        )
+                      : const Icon(Icons.arrow_upward,
+                          color: AppColors.textOnGold, size: 22),
                 ),
               ),
             ],
