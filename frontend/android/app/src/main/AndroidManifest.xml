@@ -1,10 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- enableOnBackInvokedCallback opts into Android 13+ predictive back.
+         Without it the runtime logs "OnBackInvokedCallback is not enabled for
+         the application" on every launch and the back gesture gets no preview
+         animation. -->
     <application
         android:label="TrafficJam.Life"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -24,7 +24,20 @@ class _AppShellState extends State<AppShell> {
   late int _index = widget.initialIndex;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  void _select(int i) => setState(() => _index = i);
+  /// Tabs visited before the current one. The five tabs live in an IndexedStack
+  /// rather than on the Navigator, so without this the system back button had
+  /// nothing to pop from a tab screen and closed the app outright — switching
+  /// from Home to Panchang to My Chart and pressing back quit, instead of
+  /// retracing those steps.
+  final List<int> _tabHistory = [];
+
+  void _select(int i) {
+    if (i == _index) return;
+    setState(() {
+      _tabHistory.add(_index);
+      _index = i;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,41 +48,51 @@ class _AppShellState extends State<AppShell> {
       const AskJayScreen(),
       const ProfileScreen(),
     ];
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      drawer: const AppNavDrawer(),
-      body: CosmicBackground(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: IndexedStack(index: _index, children: screens),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AppTopBar(
-                onMenu: () => _scaffoldKey.currentState?.openDrawer(),
-                onFoundations: () => goToCosmicFoundations(context),
-                onBell: () => pushScreen(context, NotificationsScreen.new),
-                onAvatar: () => _select(4),
+    return PopScope(
+      // Only let the pop through (closing the app) once there's no tab left to
+      // go back to.
+      canPop: _tabHistory.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _tabHistory.isEmpty) return;
+        setState(() => _index = _tabHistory.removeLast());
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: Colors.transparent,
+        extendBody: true,
+        extendBodyBehindAppBar: true,
+        drawer: const AppNavDrawer(),
+        body: CosmicBackground(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IndexedStack(index: _index, children: screens),
               ),
-            ),
-            if (_index == 0)
               Positioned(
-                right: 15,
-                bottom: kBottomNavHeight +
-                    MediaQuery.paddingOf(context).bottom +
-                    18,
-                child: _HomeFab(onTap: () => _select(3)),
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppTopBar(
+                  onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                  onFoundations: () => goToCosmicFoundations(context),
+                  onBell: () => pushScreen(context, NotificationsScreen.new),
+                  onAvatar: () => _select(4),
+                ),
               ),
-          ],
+              if (_index == 0)
+                Positioned(
+                  right: 15,
+                  bottom:
+                      kBottomNavHeight +
+                      MediaQuery.paddingOf(context).bottom +
+                      18,
+                  child: _HomeFab(onTap: () => _select(3)),
+                ),
+            ],
+          ),
         ),
+        bottomNavigationBar: AppBottomNav(currentIndex: _index, onTap: _select),
       ),
-      bottomNavigationBar: AppBottomNav(currentIndex: _index, onTap: _select),
     );
   }
 }
@@ -97,8 +120,12 @@ class _HomeFab extends StatelessWidget {
           ],
         ),
         child: const Center(
-          child: SvgIcon(Assets.iconFab,
-              width: 20, height: 20, color: AppColors.textOnGold),
+          child: SvgIcon(
+            Assets.iconFab,
+            width: 20,
+            height: 20,
+            color: AppColors.textOnGold,
+          ),
         ),
       ),
     );
