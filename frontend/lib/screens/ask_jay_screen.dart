@@ -31,16 +31,25 @@ class _AskJayScreenState extends State<AskJayScreen> {
   @override
   void initState() {
     super.initState();
-    ConsultApi.getPlans().then((plans) {
+    _loadPlans();
+  }
+
+  Future<void> _loadPlans() async {
+    try {
+      final plans = await ConsultApi.getPlans();
       if (!mounted) return;
       setState(() {
         _plans = plans;
         _loadingPlans = false;
       });
-    }).catchError((_) {
+    } catch (_) {
       if (mounted) setState(() => _loadingPlans = false);
-    });
+    }
   }
+
+  /// Pull-to-refresh. Without it, a failed plan fetch left the pricing
+  /// permanently blank with no way to ask again short of restarting the app.
+  Future<void> _refresh() => _loadPlans();
 
   @override
   void dispose() {
@@ -82,6 +91,7 @@ class _AskJayScreenState extends State<AskJayScreen> {
   @override
   Widget build(BuildContext context) {
     return CosmicScrollView(
+      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -148,16 +158,17 @@ class _AskJayScreenState extends State<AskJayScreen> {
           if (_loadingPlans)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Center(
-                child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-              ),
+              child: LoadingView(height: null),
             )
+          // An empty list here always means the fetch failed — the two
+          // priority tiers are seeded server-side and never legitimately
+          // absent — so it's safe to offer this as a retry rather than as an
+          // "no plans available" state.
           else if (_plans.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Text("Couldn't load plans — check your connection.",
-                  style: AppText.body),
+            RetryView(
+              height: null,
+              message: "Couldn't load response priority options",
+              onRetry: _refresh,
             )
           else
             for (int i = 0; i < _plans.length; i++) ...[

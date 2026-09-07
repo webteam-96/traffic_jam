@@ -52,6 +52,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
       if (!mounted) return;
       setState(() {
         _panchang = panchang;
+        _errored = false;
         _loading = false;
       });
     } catch (_) {
@@ -62,6 +63,12 @@ class _PanchangScreenState extends State<PanchangScreen> {
       });
     }
   }
+
+  /// Retry and pull-to-refresh both land here. Deliberately does NOT flip
+  /// `_loading` back on: the retry button and the pull spinner are already
+  /// showing progress, and blanking the screen to a full-page spinner would
+  /// throw away content that's still on screen if the retry also fails.
+  Future<void> _refresh() => _load();
 
   DateTime _parseUtc(String iso) => DateTime.parse(iso).toLocal();
 
@@ -79,25 +86,15 @@ class _PanchangScreenState extends State<PanchangScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const CosmicScrollView(
-        child: SizedBox(
-          height: 400,
-          child: Center(
-            child: CircularProgressIndicator(
-                strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-          ),
-        ),
-      );
+      return const CosmicScrollView(child: LoadingView());
     }
 
     if (_errored || _panchang == null) {
       return CosmicScrollView(
-        child: SizedBox(
-          height: 400,
-          child: Center(
-            child: Text("Couldn't load today's Panchang — check your connection.",
-                textAlign: TextAlign.center, style: AppText.body),
-          ),
+        onRefresh: _refresh,
+        child: RetryView(
+          message: "Couldn't load today's Panchang",
+          onRetry: _refresh,
         ),
       );
     }
@@ -106,6 +103,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
     final rahuKaal = panchang['rahuKaal'] as Map<String, dynamic>;
 
     return CosmicScrollView(
+      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

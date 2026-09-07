@@ -15,6 +15,7 @@ class CosmicScrollView extends StatelessWidget {
     this.topExtra = AppSpacing.xxl,
     this.bottomExtra = AppSpacing.xxl,
     this.horizontal = AppSpacing.screenH,
+    this.onRefresh,
   });
 
   final Widget child;
@@ -22,10 +23,22 @@ class CosmicScrollView extends StatelessWidget {
   final double bottomExtra;
   final double horizontal;
 
+  /// Pull down to re-fetch. Supplying this is what makes a tab recoverable
+  /// without leaving it: the screen's data loads once in `initState`, so
+  /// anything that goes wrong after that (dropped connection, backend
+  /// restarted, phone woke on another network) otherwise sticks until the app
+  /// is force-quit. Pulling is also the gesture people already try first.
+  final Future<void> Function()? onRefresh;
+
   @override
   Widget build(BuildContext context) {
     final top = kTopBarHeight + MediaQuery.paddingOf(context).top + topExtra;
-    return SingleChildScrollView(
+    Widget scroller = SingleChildScrollView(
+      // Always scrollable, so the pull gesture is available even when the
+      // content is a single short error card that wouldn't otherwise scroll.
+      physics: onRefresh == null
+          ? null
+          : const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         horizontal,
         top,
@@ -34,6 +47,19 @@ class CosmicScrollView extends StatelessWidget {
       ),
       child: child,
     );
+
+    if (onRefresh != null) {
+      scroller = RefreshIndicator(
+        onRefresh: onRefresh!,
+        color: AppColors.gold,
+        backgroundColor: AppColors.surfaceRaised,
+        // Clear the frosted top bar, which the default position would put the
+        // spinner behind.
+        edgeOffset: top - topExtra,
+        child: scroller,
+      );
+    }
+    return scroller;
   }
 }
 
@@ -114,6 +140,10 @@ class _BackBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
+    // A back arrow with nothing behind it does nothing when tapped. Screens
+    // reached via pushAndRemoveUntil (Login, the tab shell) are roots, so
+    // check the Navigator rather than trusting `showBack` alone.
+    final canGoBack = showBack && Navigator.of(context).canPop();
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
@@ -128,7 +158,7 @@ class _BackBar extends StatelessWidget {
           ),
           child: Row(
             children: [
-              if (showBack)
+              if (canGoBack)
                 IconButton(
                   onPressed: () => Navigator.of(context).maybePop(),
                   icon: const Icon(Icons.arrow_back_ios_new,

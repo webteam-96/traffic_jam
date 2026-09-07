@@ -17,35 +17,58 @@ import 'profile/book_appointment_screen.dart';
 /// Astro Identity · Today's Panchang · Action hub (2x2) · Celestial Vibe
 /// Meter · Private Cosmic Reading. Cosmic Foundations moved to its own page,
 /// reachable from the top-bar button (see AppTopBar/AppShell).
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onOpenTab});
 
   /// Switch the AppShell's active bottom-nav tab (0..4).
   final void Function(int index)? onOpenTab;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  /// Bumped by a pull-to-refresh. Each card below fetches its own data in its
+  /// own `initState` and quietly falls back to a "—" placeholder on failure,
+  /// so there is no single load to re-run: changing the subtree's key remounts
+  /// all three cards and each re-fetches itself.
+  ///
+  /// The cost of doing it this way is that we can't await those fetches, so
+  /// the pull spinner is timed rather than tied to the requests finishing.
+  int _reloadToken = 0;
+
+  Future<void> _refresh() async {
+    setState(() => _reloadToken++);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+  }
+
+  @override
   Widget build(BuildContext context) {
     return CosmicScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _AstroIdentityHeader(),
-          const SizedBox(height: AppSpacing.section),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onOpenTab?.call(1),
-            child: const _TodaysPanchangCard(),
-          ),
-          const SizedBox(height: AppSpacing.section),
-          _ActionHub(onOpenTab: onOpenTab),
-          const SizedBox(height: AppSpacing.xl),
-          GlassCardTapWrapper(
-            onTap: () => pushScreen(context, VibeMeterScreen.new),
-            child: const _VibeMeterCard(),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          const _CosmicReadingCard(),
-        ],
+      onRefresh: _refresh,
+      child: KeyedSubtree(
+        key: ValueKey(_reloadToken),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _AstroIdentityHeader(),
+            const SizedBox(height: AppSpacing.section),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => widget.onOpenTab?.call(1),
+              child: const _TodaysPanchangCard(),
+            ),
+            const SizedBox(height: AppSpacing.section),
+            _ActionHub(onOpenTab: widget.onOpenTab),
+            const SizedBox(height: AppSpacing.xl),
+            GlassCardTapWrapper(
+              onTap: () => pushScreen(context, VibeMeterScreen.new),
+              child: const _VibeMeterCard(),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            const _CosmicReadingCard(),
+          ],
+        ),
       ),
     );
   }

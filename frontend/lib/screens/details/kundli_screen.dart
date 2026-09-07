@@ -197,6 +197,12 @@ class _KundliScreenState extends State<KundliScreen> {
     }
   }
 
+  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
+  /// ran, so a failure caused by a dropped connection clears in place instead
+  /// of needing the app restarted.
+  Future<void> _refresh() => _load();
+
+
   bool _exporting = false;
 
   /// Builds the same downloadable PDF the report's Share icon offers —
@@ -317,10 +323,7 @@ class _KundliScreenState extends State<KundliScreen> {
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 80),
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -337,9 +340,10 @@ class _KundliScreenState extends State<KundliScreen> {
     if (_error != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
-        child: Center(
-          child: Text("Couldn't load your birth chart — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load your birth chart",
+          onRetry: _refresh,
         ),
       );
     }

@@ -30,6 +30,7 @@ class _MyQuestionsScreenState extends State<MyQuestionsScreen> {
       if (!mounted) return;
       setState(() {
         _items = items;
+        _errored = false;
         _loading = false;
       });
     } catch (_) {
@@ -41,16 +42,15 @@ class _MyQuestionsScreenState extends State<MyQuestionsScreen> {
     }
   }
 
+  Future<void> _refresh() => _load();
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const DetailScaffold(
         title: 'My Questions',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -58,9 +58,10 @@ class _MyQuestionsScreenState extends State<MyQuestionsScreen> {
       return DetailScaffold(
         title: 'My Questions',
         scrollable: false,
-        child: Center(
-          child: Text("Couldn't load your questions — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load your questions",
+          onRetry: _refresh,
         ),
       );
     }

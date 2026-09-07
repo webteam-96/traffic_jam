@@ -110,10 +110,7 @@ class _NotificationPrefsScreenState extends State<NotificationPrefsScreen> {
       return const DetailScaffold(
         title: 'Notifications',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 

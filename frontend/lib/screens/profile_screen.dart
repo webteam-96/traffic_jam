@@ -37,10 +37,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBirthData();
-    _loadAstroIdentity();
-    _loadPlan();
+    _refresh();
   }
+
+  /// Pull-to-refresh. The three loads are independent — kept that way so one
+  /// failing section doesn't blank the two that came back fine — so this
+  /// waits on all of them rather than chaining.
+  Future<void> _refresh() => Future.wait([
+        _loadBirthData(),
+        _loadAstroIdentity(),
+        _loadPlan(),
+      ]);
 
   Future<void> _loadBirthData() async {
     setState(() => _loadingBirthData = true);
@@ -117,6 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return CosmicScrollView(
+      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

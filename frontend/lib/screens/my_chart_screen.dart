@@ -91,22 +91,26 @@ class _MyChartScreenState extends State<MyChartScreen> {
     }
   }
 
+  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
+  /// ran, so a failure caused by a dropped connection clears in place instead
+  /// of needing the app restarted.
+  Future<void> _refresh() => _load();
+
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const CosmicScrollView(
         child: SizedBox(
           height: 400,
-          child: Center(
-            child: CircularProgressIndicator(
-                strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-          ),
+          child: LoadingView(height: null),
         ),
       );
     }
 
     if (_error == 'no-data') {
       return CosmicScrollView(
+        onRefresh: _refresh,
         child: SizedBox(
           height: 400,
           child: Center(
@@ -119,12 +123,10 @@ class _MyChartScreenState extends State<MyChartScreen> {
 
     if (_error != null || _chart == null || _dasha == null) {
       return CosmicScrollView(
-        child: SizedBox(
-          height: 400,
-          child: Center(
-            child: Text("Couldn't load your chart — check your connection.",
-                textAlign: TextAlign.center, style: AppText.body),
-          ),
+        onRefresh: _refresh,
+        child: RetryView(
+          message: "Couldn't load your chart",
+          onRetry: _refresh,
         ),
       );
     }
@@ -136,6 +138,7 @@ class _MyChartScreenState extends State<MyChartScreen> {
     final houses = housesFromPlanets(d1);
 
     return CosmicScrollView(
+      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

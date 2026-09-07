@@ -52,6 +52,12 @@ class _TrafficSignalScreenState extends State<TrafficSignalScreen> {
     }
   }
 
+  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
+  /// ran, so a failure caused by a dropped connection clears in place instead
+  /// of needing the app restarted.
+  Future<void> _refresh() => _load();
+
+
   Color _bandColor(String band) => switch (band) {
         'green' => AppColors.success,
         'yellow' => AppColors.amber,
@@ -70,10 +76,7 @@ class _TrafficSignalScreenState extends State<TrafficSignalScreen> {
       return const DetailScaffold(
         title: "Today's Signal",
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -98,9 +101,10 @@ class _TrafficSignalScreenState extends State<TrafficSignalScreen> {
       return DetailScaffold(
         title: "Today's Signal",
         scrollable: false,
-        child: Center(
-          child: Text("Couldn't load today's signal — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load today's signal",
+          onRetry: _refresh,
         ),
       );
     }

@@ -74,6 +74,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       setState(() {
         _notifs = notifs;
+        _errored = false;
         _loading = false;
       });
     } catch (_) {
@@ -84,6 +85,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       });
     }
   }
+
+  Future<void> _refresh() => _load();
 
   Future<void> _markRead(int index) async {
     final id = _notifs[index]['id'] as String;
@@ -116,10 +119,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return const DetailScaffold(
         title: 'Notifications',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -127,9 +127,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return DetailScaffold(
         title: 'Notifications',
         scrollable: false,
-        child: Center(
-          child: Text("Couldn't load notifications — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load notifications",
+          onRetry: _refresh,
         ),
       );
     }

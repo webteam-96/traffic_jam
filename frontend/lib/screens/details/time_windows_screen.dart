@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../services/panchang_api.dart';
+import '../../services/api_client.dart';
 
 /// Auspicious/Inauspicious Time Windows — Rahu Kaal, Yamaganda and Gulika
 /// (all inauspicious, classically) to avoid, and Abhijit Muhurat (the one
@@ -18,6 +19,9 @@ class _TimeWindowsScreenState extends State<TimeWindowsScreen> {
   Map<String, dynamic>? _panchang;
   bool _loading = true;
   bool _errored = false;
+  /// A failure that retrying can fix, kept apart from _errored (which
+  /// means the backend answered: there's no birth data to work from).
+  bool _offline = false;
 
   @override
   void initState() {
@@ -31,16 +35,37 @@ class _TimeWindowsScreenState extends State<TimeWindowsScreen> {
       if (!mounted) return;
       setState(() {
         _panchang = panchang;
+        _offline = false;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      // The backend answered, so this is a real "nothing to show" — most
+      // often no birth data saved yet. Retrying would just ask again.
+      if (!mounted) return;
+      final missingData = e.code == 'NO_BIRTH_DATA' ||
+          e.code == 'NO_CHART' ||
+          e.code == 'NO_DASHA';
+      setState(() {
+        _loading = false;
+        _errored = missingData;
+        _offline = !missingData;
+      });
     } catch (_) {
+      // Never reached the backend at all — offer the retry.
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errored = true;
+        _offline = true;
       });
     }
   }
+
+  /// Retry / pull-to-refresh entry point — re-runs the load `initState` ran.
+  Future<void> _refresh() async {
+    if (mounted) setState(() => _offline = false);
+    await _load();
+  }
+
 
   DateTime _parseUtc(String iso) => DateTime.parse(iso).toLocal();
 
@@ -65,16 +90,16 @@ class _TimeWindowsScreenState extends State<TimeWindowsScreen> {
           if (_loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-              child: Center(
-                child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-              ),
+              child: LoadingView(height: null),
             )
-          else if (_errored || _panchang == null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
-              child: Text("Couldn't load today's Panchang — check your connection.",
-                  style: AppText.body),
+          // Panchang is the same for everyone — it doesn't depend on birth
+          // data — so there's no "nothing to show" case here to tell apart
+          // from a failed request. Every failure is worth retrying.
+          else if (_offline || _errored || _panchang == null)
+            RetryView(
+              height: null,
+              message: "Couldn't load today's Panchang",
+              onRetry: _refresh,
             )
           else ...[
             const SectionLabel('AVOID THESE PERIODS'),

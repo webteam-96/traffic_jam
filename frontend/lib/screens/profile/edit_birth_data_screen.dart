@@ -138,10 +138,7 @@ class _EditBirthDataScreenState extends State<EditBirthDataScreen> {
       return const DetailScaffold(
         title: 'Edit Birth Data',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 

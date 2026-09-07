@@ -3,6 +3,7 @@ import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../services/chart_api.dart';
 import '../../data/planet_dignity.dart';
+import '../../services/api_client.dart';
 
 /// Planet Strengths & Life Themes — a 9-planet bar chart of each graha's
 /// classical sign dignity (exalted/own/friendly/neutral/enemy/debilitated —
@@ -49,6 +50,9 @@ class _PlanetStrengthsScreenState extends State<PlanetStrengthsScreen> {
   List<_Theme>? _themes;
   bool _loading = true;
   bool _errored = false;
+  /// A failure that retrying can fix, kept apart from _errored (which
+  /// means the backend answered: there's no birth data to work from).
+  bool _offline = false;
 
   @override
   void initState() {
@@ -85,16 +89,37 @@ class _PlanetStrengthsScreenState extends State<PlanetStrengthsScreen> {
       setState(() {
         _planets = planets;
         _themes = themes;
+        _offline = false;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      // The backend answered, so this is a real "nothing to show" — most
+      // often no birth data saved yet. Retrying would just ask again.
+      if (!mounted) return;
+      final missingData = e.code == 'NO_BIRTH_DATA' ||
+          e.code == 'NO_CHART' ||
+          e.code == 'NO_DASHA';
+      setState(() {
+        _loading = false;
+        _errored = missingData;
+        _offline = !missingData;
+      });
     } catch (_) {
+      // Never reached the backend at all — offer the retry.
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errored = true;
+        _offline = true;
       });
     }
   }
+
+  /// Retry / pull-to-refresh entry point — re-runs the load `initState` ran.
+  Future<void> _refresh() async {
+    if (mounted) setState(() => _offline = false);
+    await _load();
+  }
+
 
   _Theme _themeFor(IconData icon, String category, String significator,
       Map<String, Dignity> dignities) {
@@ -140,10 +165,13 @@ class _PlanetStrengthsScreenState extends State<PlanetStrengthsScreen> {
           if (_loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-              child: Center(
-                child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-              ),
+              child: LoadingView(height: null),
+            )
+          else if (_offline)
+            RetryView(
+              height: null,
+              message: "Couldn't load your planetary strengths",
+              onRetry: _refresh,
             )
           else if (_errored || _planets == null || _planets!.isEmpty)
             Padding(

@@ -3,6 +3,7 @@ import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/services/transit_api.dart';
 import 'package:traffic_jam/data/planet_dignity.dart';
+import '../../services/api_client.dart';
 
 /// Upcoming Major Transits — §8 of Business Flow.
 /// Each of Sun/Mars/Jupiter/Saturn/Rahu/Ketu's next sign change ("ingress"),
@@ -67,6 +68,9 @@ class _UpcomingTransitsScreenState extends State<UpcomingTransitsScreen> {
   List<_TransitEvent>? _events;
   bool _loading = true;
   bool _errored = false;
+  /// A failure that retrying can fix, kept apart from _errored (which
+  /// means the backend answered: there's no birth data to work from).
+  bool _offline = false;
 
   @override
   void initState() {
@@ -105,16 +109,37 @@ class _UpcomingTransitsScreenState extends State<UpcomingTransitsScreen> {
       if (!mounted) return;
       setState(() {
         _events = events;
+        _offline = false;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      // The backend answered, so this is a real "nothing to show" — most
+      // often no birth data saved yet. Retrying would just ask again.
+      if (!mounted) return;
+      final missingData = e.code == 'NO_BIRTH_DATA' ||
+          e.code == 'NO_CHART' ||
+          e.code == 'NO_DASHA';
+      setState(() {
+        _loading = false;
+        _errored = missingData;
+        _offline = !missingData;
+      });
     } catch (_) {
+      // Never reached the backend at all — offer the retry.
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errored = true;
+        _offline = true;
       });
     }
   }
+
+  /// Retry / pull-to-refresh entry point — re-runs the load `initState` ran.
+  Future<void> _refresh() async {
+    if (mounted) setState(() => _offline = false);
+    await _load();
+  }
+
 
   String _dignityNote(String label) => switch (label) {
         'Exalted' => 'expect this transit to bring out its best.',
@@ -143,10 +168,13 @@ class _UpcomingTransitsScreenState extends State<UpcomingTransitsScreen> {
           if (_loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-              child: Center(
-                child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-              ),
+              child: LoadingView(height: null),
+            )
+          else if (_offline)
+            RetryView(
+              height: null,
+              message: "Couldn't load your upcoming transits",
+              onRetry: _refresh,
             )
           else if (_errored || _events == null || _events!.isEmpty)
             Padding(

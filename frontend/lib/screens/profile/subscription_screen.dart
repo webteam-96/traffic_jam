@@ -44,6 +44,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         _currentTier = current['tier'] as String?;
         _currentCycle = current['cycle'] as String?;
         _selected = _defaultSelection(plans);
+        _errored = false;
         _loading = false;
       });
     } catch (_) {
@@ -54,6 +55,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       });
     }
   }
+
+  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
+  /// ran, so a failure caused by a dropped connection clears in place instead
+  /// of needing the app restarted.
+  Future<void> _refresh() => _load();
+
 
   int _defaultSelection(List<Map<String, dynamic>> plans) {
     // Prefer the popular "Saga+ Monthly" plan; fall back to the first entry.
@@ -102,10 +109,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return const DetailScaffold(
         title: 'Go Premium',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -113,9 +117,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       return DetailScaffold(
         title: 'Go Premium',
         scrollable: false,
-        child: Center(
-          child: Text("Couldn't load plans — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load plans",
+          onRetry: _refresh,
         ),
       );
     }

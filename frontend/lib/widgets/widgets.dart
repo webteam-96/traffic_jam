@@ -1,6 +1,7 @@
 // Barrel — single import for all shared UI: `import '../widgets/widgets.dart';`
 export 'app_top_bar.dart';
 export 'app_widgets.dart';
+export 'async_state_view.dart';
 export 'birth_date_field.dart';
 export 'birth_time_field.dart';
 export 'bottom_nav_bar.dart';

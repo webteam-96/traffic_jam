@@ -62,6 +62,7 @@ class _DashaTimelineScreenState extends State<DashaTimelineScreen> {
       if (!mounted) return;
       setState(() {
         _dasha = dasha;
+        _error = null;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -79,16 +80,19 @@ class _DashaTimelineScreenState extends State<DashaTimelineScreen> {
     }
   }
 
+  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
+  /// ran, so a failure caused by a dropped connection clears in place instead
+  /// of needing the app restarted.
+  Future<void> _refresh() => _load();
+
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const DetailScaffold(
         title: 'Dasha Timeline',
         scrollable: false,
-        child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 3, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-        ),
+        child: LoadingView(height: null),
       );
     }
 
@@ -110,9 +114,10 @@ class _DashaTimelineScreenState extends State<DashaTimelineScreen> {
       return DetailScaffold(
         title: 'Dasha Timeline',
         scrollable: false,
-        child: Center(
-          child: Text("Couldn't load your Dasha timeline — check your connection.",
-              textAlign: TextAlign.center, style: AppText.body),
+        child: RetryView(
+          height: null,
+          message: "Couldn't load your Dasha timeline",
+          onRetry: _refresh,
         ),
       );
     }
