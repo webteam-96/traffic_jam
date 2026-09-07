@@ -11,14 +11,18 @@ namespace TrafficJam.Api.Tests;
 /// <summary>
 /// Proves birth data is actually encrypted in MySQL — not just that the app
 /// layer round-trips correctly (a converter could no-op and still pass a
-/// purely in-app test). Requires the dev-compose MySQL container running on
-/// localhost:3307 (see backend/docker-compose.yml). Uses a dedicated
-/// "trafficjam_test" schema so it never touches dev data.
+/// purely in-app test). Needs a real MySQL, since the whole point is to read
+/// the stored bytes back out; uses a dedicated "trafficjam_test" schema on the
+/// local server so it never touches dev data.
+///
+/// This used to hardcode localhost:3307 with password "devpassword" — the
+/// docker-compose MySQL that this repo no longer contains — so these three
+/// tests failed with a connection error the moment that container stopped.
 /// </summary>
 public class BirthDataEncryptionIntegrationTests : IAsyncLifetime
 {
     private const string TestConnectionString =
-        "Server=localhost;Port=3307;Database=trafficjam_test;User=root;Password=devpassword;";
+        "Server=localhost;Port=3306;Database=trafficjam_test;User=root;Password=root;AllowPublicKeyRetrieval=True;";
 
     private AppDbContext _db = null!;
 

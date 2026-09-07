@@ -21,23 +21,68 @@ later if a module needs to scale independently.
 ## Local dev setup
 
 ```bash
-# 1. Start MySQL
-docker compose up -d
+# 1. Create the database — once per machine.
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS trafficjam
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 
-# 2. Apply migrations
+# 2. Point appsettings.Development.json at it — a LOCAL edit, left uncommitted
+#    so your MySQL password never enters the repo (see "Local database" below):
+#    "MySql": "Server=localhost;Port=3306;Database=trafficjam;User=<you>;
+#              Password=<yours>;CharSet=utf8mb4;AllowPublicKeyRetrieval=True;"
+
+# 3. Apply migrations. The environment variable is NOT optional — see below.
 cd src/TrafficJam.Api
 dotnet tool install --global dotnet-ef --version 9.0.0   # once, if not already installed
 export PATH="$PATH:$HOME/.dotnet/tools"
-dotnet ef database update
+ASPNETCORE_ENVIRONMENT=Development dotnet ef database update
 
-# 3. Run the API
-dotnet run
-# → http://localhost:5080/health should return "Healthy"
+# 4. Run the API
+dotnet run --urls http://0.0.0.0:5227
+# → http://localhost:5227/health should return "Healthy"
 ```
 
-MySQL is exposed on host port **3307** (not 3306) — this machine already had
-a native MySQL install bound to 3306, so the container was remapped to avoid
-conflicting with it.
+Bind to `0.0.0.0`, not the default loopback, so `adb reverse tcp:5227
+tcp:5227` can forward a USB-connected Android device to it.
+
+**Always pass `ASPNETCORE_ENVIRONMENT=Development` to `dotnet ef`.** `dotnet
+run` reads `Properties/launchSettings.json` and gets Development from there,
+but `dotnet ef` ignores that file and the host then defaults to **Production**
+— so a bare `dotnet ef database update` loads `appsettings.Production.json`.
+That file's connection string is `Server=localhost`, because the API runs on
+the same box as the production database. On a developer machine "localhost" is
+*your* MySQL, so the command doesn't fail in any obvious way: it just tries the
+production password against your local server and reports `Access denied for
+user 'root'@'localhost'`, which reads like a wrong local password rather than
+the wrong config file. Worse, if your local root password ever matches, it will
+quietly migrate the wrong database.
+
+### Local database
+
+MySQL runs natively on the standard port 3306 (Homebrew: `brew services start
+mysql`). There is no `docker-compose.yml` — an earlier version of this file
+described one, plus a remapped port 3307 to dodge a native install; both are
+gone.
+
+**The committed `appsettings.Development.json` still points at the production
+server** — `Server=163.128.34.90`, which is what
+`trafficjam-live.kaizeninfotech.com` resolves to — with an admin password
+committed alongside it. So an untouched checkout does its local work directly
+against live user rows. Point it at your own MySQL (step 2 above) and leave
+that edit uncommitted; a database password, even a local one, does not belong
+in a tracked file. `dotnet user-secrets` is the tidier home for it — both
+`dotnet run` and `dotnet ef` read it, and it never touches the working tree.
+
+That shared-server arrangement also fails closed without warning. On
+2026-09-07 the `Mysql_admin_User` account's grant on `trafficjam` was removed
+server-side (it now has privileges only on an unrelated
+`rotaryindia_production_claude` database), and every local query started
+returning "Access denied ... to database 'trafficjam'" with nothing in the repo
+having changed. Local work belongs on a local database; production changes go
+through a migration applied to production, not through a dev session.
+
+A fresh local database has no real data — migrations create the schema and the
+three seeded demo accounts (`+919999900001/2/3`), and `Auth:DevModeEnabled`
+lets you sign in as any number with OTP `123456`.
 
 **If `dotnet ef database update` fails with "Table 'X' already exists":**
 the dev database's `__EFMigrationsHistory` table doesn't reflect what's

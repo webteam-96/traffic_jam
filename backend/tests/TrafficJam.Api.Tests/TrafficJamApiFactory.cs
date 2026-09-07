@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -24,14 +25,32 @@ public class TrafficJamApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"trafficjam_test_{Guid.NewGuid():N}";
 
+    /// The connection this instance's schema was actually created on —
+    /// captured so Dispose drops it from the same server. It used to open
+    /// its own hardcoded connection, which silently pointed somewhere else;
+    /// the drop then failed on every test class and the schemas piled up.
+    private string _connectionString = string.Empty;
+
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((_, config) =>
         {
+            // Reuse whichever MySQL this machine is already configured for and
+            // swap only the database name, rather than hardcoding a server.
+            // The hardcoded one (port 3307, password "devpassword") pointed at
+            // a docker-compose MySQL that no longer exists in this repo, so
+            // the whole suite failed to connect the moment that container
+            // stopped — 107 failures that said nothing about the code.
+            var appConnection = config.Build().GetConnectionString("MySql")
+                ?? "Server=localhost;Port=3306;User=root;Password=root;";
+            var testConnection = Regex.Replace(
+                appConnection, @"Database=[^;]*;", $"Database={_databaseName};",
+                RegexOptions.IgnoreCase);
+
+            _connectionString = testConnection;
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:MySql"] =
-                    $"Server=localhost;Port=3307;Database={_databaseName};User=root;Password=devpassword;",
+                ["ConnectionStrings:MySql"] = testConnection,
             });
         });
 
@@ -90,8 +109,14 @@ public class TrafficJamApiFactory : WebApplicationFactory<Program>
     {
         if (disposing && _initialized)
         {
+            // Server-level connection: no Database in it. WebApplicationFactory
+            // routes Dispose() through DisposeAsync() back into Dispose(bool),
+            // so this runs twice — and a connection string naming the schema
+            // fails on the second pass with "Unknown database", because the
+            // first pass just dropped it.
             using var connection = new MySqlConnector.MySqlConnection(
-                "Server=localhost;Port=3307;User=root;Password=devpassword;");
+                Regex.Replace(_connectionString, @"Database=[^;]*;", string.Empty,
+                    RegexOptions.IgnoreCase));
             connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = $"DROP DATABASE IF EXISTS `{_databaseName}`;";
