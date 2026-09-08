@@ -430,6 +430,7 @@ only) — needs its own design pass before implementation starts.
         attempts, an environment/extension issue, not a code issue) — worth
         a live pass through onboarding → Home/Panchang/Signal/Kundli next
         time a browser session is available.
+- [ ] KP table's `(C)` combust marker — needs the per-planet orbs you use, since they differ between schools
 - [ ] FCM client registration + push notification handling — needs a real
       Firebase project (same one Auth needs)
 - [ ] Payment SDK integration (Razorpay/Stripe client) for Ask Jay + Subscription
