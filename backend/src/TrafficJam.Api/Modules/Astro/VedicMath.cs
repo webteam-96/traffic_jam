@@ -72,6 +72,18 @@ public static class VedicMath
     /// <summary>
     /// Position within the current Navamsha, rescaled to a 0-30° range so it
     /// reads the same way DegreeInSign does for a D1 sign.
+    ///
+    /// NOT a position, and must never be shown to a reader as one. A varga is
+    /// a sign mapping — it says which Navamsha sign a planet falls in and
+    /// nothing more; the planet's actual degree stays whatever D1 reports.
+    /// This value is that planet's offset inside its own 3°20' slice, stretched
+    /// to 30°, which is useful for further subdivision and meaningless as a
+    /// coordinate. Displaying it (the app and the PDF both did, until
+    /// 2026-09-07) puts a degree beside every D9/D10/D60 planet that agrees
+    /// with no other astrology tool — the Sun at Taurus 00°33' shows up as
+    /// "Capricorn 05°01'" — while the sign beside it is correct, which makes
+    /// the whole chart look wrong. The same warning applies to
+    /// <see cref="DashamshaDegreeInSign"/> and <see cref="ShastiamshaDegreeInSign"/>.
     /// </summary>
     public static double NavamshaDegreeInSign(double siderealLongitude) =>
         (Normalize(siderealLongitude) % DegreesPerNavamsha) * 9.0;

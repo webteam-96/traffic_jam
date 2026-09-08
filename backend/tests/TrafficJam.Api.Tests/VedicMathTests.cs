@@ -108,4 +108,97 @@ public class VedicMathTests
         Assert.Equal(10.0, VedicMath.Normalize(370.0), precision: 9);
         Assert.Equal(350.0, VedicMath.Normalize(-10.0), precision: 9);
     }
+
+    // ── Whole-zodiac sweeps ──────────────────────────────────────────────
+    //
+    // The [Theory] cases above check a handful of hand-picked longitudes. That
+    // catches a wrong rule and nothing else; a varga formula goes wrong at a
+    // division boundary, and there are 108/120/720 of those. These walk every
+    // single division and check the classical rule holds in all of them.
+    //
+    // Each division is sampled at its MIDPOINT rather than on a grid of round
+    // longitudes. A round longitude can land exactly on a boundary, where the
+    // answer legitimately depends on which side of it a double falls — 23°20'
+    // written as 1400/60.0 is 1.2e-15° *below* the true boundary, so the lower
+    // division is genuinely correct there and an exact-arithmetic expectation
+    // would wrongly fail. Midpoints have no such ambiguity, and the boundaries
+    // themselves are covered structurally by the sign-change counts below.
+
+    private static void AssertVargaAcrossEveryDivision(
+        int divisionsPerSign, Func<double, int> actual, Func<int, int, int> expected)
+    {
+        var width = 30.0 / divisionsPerSign;
+        for (var sign = 0; sign < 12; sign++)
+        {
+            for (var part = 0; part < divisionsPerSign; part++)
+            {
+                var longitude = sign * 30.0 + part * width + width / 2.0;
+                Assert.Equal(expected(sign, part), actual(longitude));
+            }
+        }
+    }
+
+    [Fact]
+    public void NavamshaSignIndex_MatchesTheClassicalRule_InEveryDivision()
+    {
+        // Movable signs count from themselves, fixed from the 9th, dual from the 5th.
+        AssertVargaAcrossEveryDivision(9, VedicMath.NavamshaSignIndex, (sign, part) =>
+        {
+            var start = (sign % 3) switch { 0 => sign, 1 => (sign + 8) % 12, _ => (sign + 4) % 12 };
+            return (start + part) % 12;
+        });
+    }
+
+    [Fact]
+    public void DashamshaSignIndex_MatchesTheClassicalRule_InEveryDivision()
+    {
+        // Odd signs count from themselves, even signs from the 9th.
+        AssertVargaAcrossEveryDivision(10, VedicMath.DashamshaSignIndex, (sign, part) =>
+            ((sign % 2 == 0 ? sign : (sign + 8) % 12) + part) % 12);
+    }
+
+    [Fact]
+    public void ShastiamshaSignIndex_MatchesTheChosenRule_InEveryDivision()
+    {
+        // Uniform, no odd/even reversal — a documented convention choice, see
+        // VedicMath.ShastiamshaSignIndex.
+        AssertVargaAcrossEveryDivision(60, VedicMath.ShastiamshaSignIndex, (sign, part) =>
+            (sign + part) % 12);
+    }
+
+    // A structural consequence of each rule, independent of the rule's own
+    // arithmetic — so this still fails if a bug were mirrored into the
+    // expectations above, and it exercises the boundaries the midpoint sweeps
+    // deliberately skip.
+    //
+    // D9's 108 divisions each land on a different sign from the last, so the
+    // sign changes at all 107 interior boundaries. D10 has 120, but where an
+    // odd sign hands over to an even one, its last part and the next sign's
+    // first part resolve to the same sign — that happens at 6 of the 12 sign
+    // boundaries, giving 119 - 6 = 113. D60's 720 divisions all differ.
+    [Theory]
+    [InlineData("d9", 107)]
+    [InlineData("d10", 113)]
+    [InlineData("d60", 719)]
+    public void VargaSignChanges_PerCircle_MatchTheDivisionStructure(string varga, int expectedChanges)
+    {
+        Func<double, int> fn = varga switch
+        {
+            "d9" => VedicMath.NavamshaSignIndex,
+            "d10" => VedicMath.DashamshaSignIndex,
+            _ => VedicMath.ShastiamshaSignIndex,
+        };
+
+        const int arcminutesPerCircle = 360 * 60;
+        var changes = 0;
+        var previous = fn(0.0);
+        for (var m = 1; m < arcminutesPerCircle; m++)
+        {
+            var current = fn(m / 60.0);
+            if (current != previous) changes++;
+            previous = current;
+        }
+
+        Assert.Equal(expectedChanges, changes);
+    }
 }

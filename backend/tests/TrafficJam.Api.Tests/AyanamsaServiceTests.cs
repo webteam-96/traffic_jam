@@ -42,4 +42,49 @@ public class AyanamsaServiceTests
 
         Assert.True(later > earlier); // precession is a one-directional drift
     }
+
+    // Krishnamurti's own published anchor: 22°21'50" at J1900 (JD 2415020.0),
+    // the value Swiss Ephemeris uses for SE_SIDM_KRISHNAMURTI. Pinned here so
+    // that if it ever needs correcting against a KP source, exactly one
+    // constant moves and this test says so loudly.
+    [Fact]
+    public void KpDegrees_AtJ1900_EqualsKrishnamurtisPublishedAnchor()
+    {
+        var service = new LahiriAyanamsaService();
+        // JD 2415020.0 = 1899-12-31 12:00 TT.
+        var j1900 = new AstroTime(new DateTime(1899, 12, 31, 12, 0, 0, DateTimeKind.Utc));
+
+        var expected = 22.0 + 21.0 / 60.0 + 50.0 / 3600.0;
+        var actual = service.KpDegrees(j1900);
+
+        Assert.True(Math.Abs(actual - expected) * 3600 < 2.0,
+            $"Expected {expected:F5}°, got {actual:F5}° (diff {Math.Abs(actual - expected) * 3600:F2}\")");
+    }
+
+    // The whole reason KP can't reuse Lahiri. The gap is small in absolute
+    // terms but wider than KP's narrowest sub-sub division (2 arcminutes), so
+    // it changes lordships rather than just decimals.
+    [Theory]
+    [InlineData(1990)]
+    [InlineData(2000)]
+    [InlineData(2026)]
+    public void KpDegrees_RunsAFewArcminutesBehindLahiri(int year)
+    {
+        var service = new LahiriAyanamsaService();
+        var time = new AstroTime(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var gapArcmin = (service.LahiriDegrees(time) - service.KpDegrees(time)) * 60.0;
+
+        Assert.InRange(gapArcmin, 4.0, 7.0);
+    }
+
+    [Fact]
+    public void KpDegrees_IncreasesOverTime()
+    {
+        var service = new LahiriAyanamsaService();
+        var earlier = service.KpDegrees(new AstroTime(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+        var later = service.KpDegrees(new AstroTime(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+
+        Assert.True(later > earlier);
+    }
 }

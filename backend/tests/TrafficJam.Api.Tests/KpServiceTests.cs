@@ -15,25 +15,33 @@ public class KpServiceTests
     private KpChartResult Compute()
     {
         var chart = _astroEngine.ComputeBirthChart(BirthUtc, Lat, Lng, timeKnown: true);
-        return _kp.Compute(new AstroTime(BirthUtc), Lat, Lng, chart.D1);
+        return _kp.Compute(new AstroTime(BirthUtc), Lat, Lng);
     }
 
+    // Cusp 1 and the birth chart's Ascendant are the same point in the sky
+    // measured from two different zero points — KP's ayanamsa and Lahiri's. So
+    // they must differ by exactly the gap between those two ayanamsas and by
+    // nothing else, which pins both the KpService wiring and the fact that KP
+    // is genuinely using its own ayanamsa rather than quietly borrowing Lahiri.
     [Fact]
-    public void Compute_Cusp1SiderealLongitude_MatchesTheBirthChartsOwnAscendant()
+    public void Compute_Cusp1_DiffersFromTheLahiriAscendantByExactlyTheAyanamsaGap()
     {
         var chart = _astroEngine.ComputeBirthChart(BirthUtc, Lat, Lng, timeKnown: true);
-        var kpChart = _kp.Compute(new AstroTime(BirthUtc), Lat, Lng, chart.D1);
+        var kpChart = _kp.Compute(new AstroTime(BirthUtc), Lat, Lng);
 
         var cusp1 = kpChart.Cusps.Single(c => c.House == 1);
         var cusp1Longitude = cusp1.SignIndex * 30.0 + cusp1.DegreeInSign;
 
-        // Both ultimately go through the same AscendantCalculator + ayanamsa —
-        // this checks the KpService wiring didn't introduce its own divergence.
-        // (timeKnown: true above guarantees this is non-null.)
+        var ayanamsa = new LahiriAyanamsaService();
+        var time = new AstroTime(BirthUtc);
+        var expectedGap = ayanamsa.LahiriDegrees(time) - ayanamsa.KpDegrees(time);
+
         var chartAscendant = chart.AscendantSiderealLongitude!.Value;
-        var diff = Math.Abs(VedicMath.Normalize(cusp1Longitude) - VedicMath.Normalize(chartAscendant));
-        diff = Math.Min(diff, 360 - diff);
-        Assert.True(diff < 0.01, $"Cusp 1 {cusp1Longitude:F4}° vs chart Ascendant {chartAscendant:F4}° — diff {diff:F4}°");
+        var actualGap = VedicMath.Normalize(cusp1Longitude - chartAscendant);
+
+        Assert.Equal(expectedGap, actualGap, precision: 6);
+        // Sanity on the gap itself: KP runs a few arcminutes behind Lahiri.
+        Assert.InRange(expectedGap * 60.0, 4.0, 7.0);
     }
 
     [Fact]
@@ -41,9 +49,31 @@ public class KpServiceTests
     {
         var result = Compute();
 
-        Assert.Equal(9, result.Planets.Count);
+        // 9 grahas + Uranus/Neptune/Pluto + the Ascendant that opens the table.
+        Assert.Equal(13, result.Planets.Count);
+        Assert.Contains(result.Planets, p => p.Planet == "Uranus");
+        Assert.Contains(result.Planets, p => p.Planet == "Neptune");
+        Assert.Contains(result.Planets, p => p.Planet == "Pluto");
+        Assert.Equal("Ascendant", result.Planets[0].Planet);
         Assert.Equal(12, result.Cusps.Count);
         Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], result.Cusps.Select(c => c.House).OrderBy(h => h));
+    }
+
+    // The Ascendant is cusp 1 in Placidus. The planets table and the cusps
+    // table both show it, and a reader comparing the two will notice instantly
+    // if they disagree — so it's derived from cusp 1 rather than recomputed.
+    [Fact]
+    public void Compute_AscendantRow_MatchesCuspOneExactly()
+    {
+        var result = Compute();
+
+        var asc = result.Planets[0];
+        var cusp1 = result.Cusps.Single(c => c.House == 1);
+
+        Assert.Equal(cusp1.SignIndex, asc.SignIndex);
+        Assert.Equal(cusp1.DegreeInSign, asc.DegreeInSign);
+        Assert.Equal(cusp1.Lordship, asc.Lordship);
+        Assert.False(asc.Retrograde);
     }
 
     [Fact]
@@ -58,14 +88,18 @@ public class KpServiceTests
     {
         var result = Compute();
 
-        foreach (var planet in result.Planets)
+        // Skips the Ascendant: it's a point the houses are measured *from*,
+        // not a body sitting in one, so it deliberately isn't listed among a
+        // cusp's occupying planets even though it heads the planets table.
+        foreach (var planet in result.Planets.Where(p => p.Planet != "Ascendant"))
         {
             var cuspListingThisPlanet = result.Cusps.Where(c => c.Planets.Contains(planet.Planet)).ToList();
             Assert.Single(cuspListingThisPlanet);
             Assert.Equal(planet.House, cuspListingThisPlanet[0].House);
         }
 
-        Assert.Equal(9, result.Cusps.Sum(c => c.Planets.Count));
+        Assert.Equal(12, result.Cusps.Sum(c => c.Planets.Count));
+        Assert.DoesNotContain(result.Cusps, c => c.Planets.Contains("Ascendant"));
     }
 
     [Fact]

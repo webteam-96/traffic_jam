@@ -322,7 +322,7 @@ public static class UserEndpoints
         // so, in fact: there is no Placidus chart at all without one).
         if (timeKnown)
         {
-            var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), lat, lng, result.D1);
+            var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), lat, lng);
             chart.KpJson = JsonSerializer.Serialize(kpChart.Planets, JsonConventions.CamelCase);
             chart.CuspJson = JsonSerializer.Serialize(kpChart.Cusps, JsonConventions.CamelCase);
         }

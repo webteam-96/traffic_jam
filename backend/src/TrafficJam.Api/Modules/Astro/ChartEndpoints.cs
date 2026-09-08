@@ -92,7 +92,7 @@ public static class ChartEndpoints
             object cuspJson = Array.Empty<object>();
             if (timeKnown)
             {
-                var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), request.Lat, request.Lng, result.D1);
+                var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), request.Lat, request.Lng);
                 kpJson = kpChart.Planets;
                 cuspJson = kpChart.Cusps;
             }
