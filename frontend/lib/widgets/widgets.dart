@@ -9,5 +9,6 @@ export 'chart_painters.dart';
 export 'city_field.dart';
 export 'cosmic_background.dart';
 export 'glass_card.dart';
+export 'kp_table.dart';
 export 'orbit_loader.dart';
 export 'screen_scaffold.dart';

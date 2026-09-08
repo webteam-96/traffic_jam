@@ -6,10 +6,27 @@ import '../theme/app_theme.dart';
 /// centers. [houses] maps house number (1..12) to a label string (planet
 /// abbreviations, newline-joined when several share a house); a label
 /// starting with "As" is highlighted gold as the Ascendant.
+///
+/// The small number in each cell is the RASHI (sign) number, 1=Aries..12=
+/// Pisces — the universal North-Indian convention, and the reason
+/// [ascendantSign] is needed. The house is already given by the cell's fixed
+/// position (house 1 is always the top-centre diamond), so numbering the
+/// cells 1..12 by house, as this used to, prints information the layout
+/// already carries and drops the one thing it doesn't.
+///
+/// That made the chart impossible to check against any other astrology app:
+/// every cell showed a different number from the same cell elsewhere, so
+/// identical placements read as completely wrong. Verified 2026-09-07 against
+/// a reference app on the same birth data — D10 agreed on all nine grahas and
+/// D60 on eight of nine, while the numbering made them look unrelated.
 class NorthChartPainter extends CustomPainter {
-  const NorthChartPainter(this.houses);
+  const NorthChartPainter(this.houses, this.ascendantSign);
 
   final Map<int, String> houses;
+
+  /// 0=Aries..11=Pisces. House 1 holds this sign; each later house holds the
+  /// next sign round, since these charts are whole-sign.
+  final int ascendantSign;
 
   static const Map<int, Offset> _centers = {
     1: Offset(0.50, 0.25), 2: Offset(0.25, 0.11), 3: Offset(0.11, 0.25),
@@ -38,17 +55,18 @@ class NorthChartPainter extends CustomPainter {
       ..close();
     canvas.drawPath(diamond, line..color = AppColors.gold.withValues(alpha: 0.32));
 
-    // Every one of the 12 fixed cells gets its house number, even empty
-    // ones — [houses] only carries entries for cells with a label.
+    // Every one of the 12 fixed cells gets its sign number, even empty ones —
+    // [houses] only carries entries for cells with a label.
     for (var house = 1; house <= 12; house++) {
       final c = _centers[house];
       if (c == null) continue;
       final label = houses[house];
       final isAsc = label?.startsWith('As') ?? false;
+      final signNumber = (ascendantSign + house - 1) % 12 + 1;
 
       final numberTp = TextPainter(
         text: TextSpan(
-          text: '$house',
+          text: '$signNumber',
           style: AppText.sans(
             size: 9,
             weight: FontWeight.w600,
@@ -85,7 +103,8 @@ class NorthChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant NorthChartPainter old) => old.houses != houses;
+  bool shouldRepaint(covariant NorthChartPainter old) =>
+      old.houses != houses || old.ascendantSign != ascendantSign;
 }
 
 /// Draws the South-Indian fixed 4x4 grid — signs sit in fixed cells; each

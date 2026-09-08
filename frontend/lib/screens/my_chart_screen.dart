@@ -216,7 +216,9 @@ class _MyChartScreenState extends State<MyChartScreen> {
                             BoxShadow(color: AppColors.gold.withValues(alpha: 0.1), blurRadius: 12)
                           ],
                         ),
-                        child: CustomPaint(painter: NorthChartPainter(houses)),
+                        child: CustomPaint(
+                            painter: NorthChartPainter(
+                                houses, ascendant['signIndex'] as int? ?? 0)),
                       ),
                     ),
                   ),

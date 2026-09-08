@@ -74,6 +74,7 @@ class KundliPdfService {
           note: note,
           planets: planets,
           ascendantSign: ascendantSign,
+          realDegrees: _realDegreeByPlanet(chart),
         ));
       }
     }
@@ -206,6 +207,7 @@ class KundliPdfService {
     required String note,
     required List<dynamic> planets,
     required int? ascendantSign,
+    required Map<String, double> realDegrees,
   }) {
     final houses = housesFromPlanets(planets);
     return pw.Page(
@@ -219,7 +221,7 @@ class KundliPdfService {
           pw.Text(note, style: pw.TextStyle(fontSize: 10, color: _muted)),
           pw.SizedBox(height: 16),
           if (ascendantSign != null)
-            pw.Center(child: pw.SizedBox(width: 230, height: 230, child: _diamond(houses)))
+            pw.Center(child: pw.SizedBox(width: 230, height: 230, child: _diamond(houses, ascendantSign)))
           else
             pw.Container(
               padding: const pw.EdgeInsets.all(12),
@@ -230,7 +232,7 @@ class KundliPdfService {
               ),
             ),
           pw.SizedBox(height: 18),
-          _planetTable(planets),
+          _planetTable(planets, realDegrees),
           pw.Spacer(),
           _footer(ctx),
         ],
@@ -248,7 +250,10 @@ class KundliPdfService {
   /// North-Indian diamond — ported from chart_painters.dart's
   /// NorthChartPainter (same geometry/centers) to the pdf package's own
   /// PdfGraphics canvas, since Flutter's dart:ui Canvas isn't usable here.
-  static pw.Widget _diamond(Map<int, String> houses) {
+  /// [ascendantSign] is 0=Aries..11=Pisces: the small number in each cell is
+  /// the RASHI number, not the house, matching the North-Indian convention
+  /// every other chart uses (see NorthChartPainter for why).
+  static pw.Widget _diamond(Map<int, String> houses, int ascendantSign) {
     return pw.CustomPaint(
       size: const PdfPoint(230, 230),
       painter: (canvas, size) {
@@ -278,7 +283,8 @@ class KundliPdfService {
                   width: 44,
                   child: pw.Column(
                     children: [
-                      pw.Text('$house', style: pw.TextStyle(fontSize: 6, color: _gold)),
+                      pw.Text('${(ascendantSign + house - 1) % 12 + 1}',
+                          style: pw.TextStyle(fontSize: 6, color: _gold)),
                       pw.Text(
                         houses[house] ?? '',
                         textAlign: pw.TextAlign.center,
@@ -297,7 +303,25 @@ class KundliPdfService {
     );
   }
 
-  static pw.Widget _planetTable(List<dynamic> planets) {
+  /// A planet's real position, by name — read off D1.
+  ///
+  /// A divisional chart maps a planet to a *sign*, nothing more. The varga
+  /// entries also carry a `degreeInSign`, but it's the planet's offset inside
+  /// its own narrow division stretched to a 0-30° scale — an internal value,
+  /// not a position, and printing it put a degree beside every D9/D10/D60
+  /// planet that matches no other astrology tool.
+  static Map<String, double> _realDegreeByPlanet(Map<String, dynamic>? chart) {
+    final d1 = chart?['d1'] as List<dynamic>?;
+    if (d1 == null) return const {};
+    return {
+      for (final e in d1)
+        (e as Map<String, dynamic>)['planet'] as String:
+            (e['degreeInSign'] as num).toDouble(),
+    };
+  }
+
+  static pw.Widget _planetTable(
+      List<dynamic> planets, Map<String, double> realDegrees) {
     return pw.Table(
       border: pw.TableBorder(
         horizontalInside: pw.BorderSide(color: _border, width: 0.5),
@@ -316,15 +340,15 @@ class KundliPdfService {
               ),
           ],
         ),
-        for (final planet in planets)
-          _planetRow(planet as Map<String, dynamic>),
+        for (final planet in planets.cast<Map<String, dynamic>>())
+          _planetRow(planet, realDegrees[planet['planet'] as String]),
       ],
     );
   }
 
-  static pw.TableRow _planetRow(Map<String, dynamic> p) {
+  static pw.TableRow _planetRow(Map<String, dynamic> p, double? realDegree) {
     final retro = p['retrograde'] as bool? ?? false;
-    final degree = _formatDeg(p['degreeInSign'] as double);
+    final degree = realDegree == null ? '—' : _formatDeg(realDegree);
     final house = p['house'] as int?;
     return pw.TableRow(children: [
       _cell(p['planet'] as String),

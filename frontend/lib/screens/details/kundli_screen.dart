@@ -957,15 +957,23 @@ class _ChartsTab extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         _howToReadNote(
-          "Each numbered slot in the diamond is a house, counted from your "
-          "Ascendant (marked 'As') as House 1. Planets listed in a slot are "
-          "placed in that house for this chart. Every divisional chart "
-          "(D1, D9, D10, D60...) re-slices the same birth moment through a "
-          "different lens — the houses and placements shift, the underlying "
-          "birth data doesn't.",
+          "The diamond's twelve slots are the twelve houses, in fixed "
+          "positions — house 1 is always the top-centre slot, marked 'As', "
+          "and they run anticlockwise from there. The small number in each "
+          "slot is the sign sitting in that house (1 = Aries ... 12 = "
+          "Pisces), which is how North Indian charts are labelled everywhere. "
+          "Every divisional chart (D1, D9, D10, D60...) re-slices the same "
+          "birth moment through a different lens — the signs and placements "
+          "shift, the underlying birth data doesn't.",
         ),
         const SizedBox(height: AppSpacing.lg),
-        if (chartIndex == 0) ...[_styleToggle(), const SizedBox(height: AppSpacing.lg)],
+        // Shown on every chart, not just D1. The North/South choice is applied
+        // to all four, but the control used to appear only on D1 — so a South
+        // Indian selection followed the reader into D9/D10/D60 with no way to
+        // change it back, and the two layouts are read completely differently
+        // (South fixes the signs to cells; North fixes the houses).
+        _styleToggle(),
+        const SizedBox(height: AppSpacing.lg),
         if (_d60Locked)
           _lockedNotice(
             'Shastiamsha shifts with just a few minutes\' difference. '
@@ -1063,7 +1071,7 @@ class _ChartsTab extends StatelessWidget {
         child: CustomPaint(
           painter: southIndian
               ? SouthChartPainter(_mockHouses[chartIndex], _mockAscendantSign[chartIndex])
-              : NorthChartPainter(_mockHouses[chartIndex]),
+              : NorthChartPainter(_mockHouses[chartIndex], _mockAscendantSign[chartIndex]),
         ),
       ),
     );
@@ -1084,7 +1092,7 @@ class _ChartsTab extends StatelessWidget {
         child: CustomPaint(
           painter: southIndian
               ? SouthChartPainter(houses, ascendantSignIndex)
-              : NorthChartPainter(houses),
+              : NorthChartPainter(houses, ascendantSignIndex),
         ),
       ),
     );
@@ -1094,30 +1102,58 @@ class _ChartsTab extends StatelessWidget {
   // columns as the Planet tab, just scoped to whichever chart is selected
   // here. Also stands alone (no House column filled in) for D9/D10 when the
   // birth time is unknown and there's no honest house to show.
+  /// A planet's real position, by name — the D1 sign degree.
+  ///
+  /// A divisional chart is a *sign mapping*: it says which D9/D10/D60 sign a
+  /// planet falls in, and that's all it says. The backend also reports a
+  /// `degreeInSign` for each varga entry, but that number is the planet's
+  /// position within its narrow division stretched out to a 0-30° scale — an
+  /// internal quantity, not a position. Showing it made every degree in these
+  /// tables disagree with every other astrology tool (the Sun at Taurus 00°33'
+  /// appeared as "Capricorn 05°01'" in D9), while the signs beside them were
+  /// right all along. The planet's actual degree is the number a reader can
+  /// check, so that's what's shown.
+  Map<String, double> get _realDegreeByPlanet {
+    final d1 = chart?['d1'] as List<dynamic>?;
+    if (d1 == null) return const {};
+    return {
+      for (final e in d1)
+        (e as Map<String, dynamic>)['planet'] as String:
+            (e['degreeInSign'] as num).toDouble(),
+    };
+  }
+
   Widget _realVargaSignList(List<dynamic> planets) {
+    final realDegrees = _realDegreeByPlanet;
     return GlassCard(
       padding: EdgeInsets.zero,
       radius: AppRadius.md,
       child: Column(
         children: [
-          _vargaRow(const {'planet': 'GRAHA', 'sign': 'RASHI', 'degreeInSign': 'DEG', 'house': 'H'},
-              isHeader: true, last: false),
+          _vargaRow(const {'planet': 'GRAHA', 'sign': 'RASHI', 'house': 'H'},
+              isHeader: true, last: false, realDegree: null),
           for (int i = 0; i < planets.length; i++)
-            _vargaRow(planets[i] as Map<String, dynamic>, last: i == planets.length - 1),
+            _vargaRow(planets[i] as Map<String, dynamic>,
+                last: i == planets.length - 1,
+                realDegree: realDegrees[
+                    (planets[i] as Map<String, dynamic>)['planet'] as String]),
         ],
       ),
     );
   }
 
-  Widget _vargaRow(Map<String, dynamic> p, {bool isHeader = false, required bool last}) {
+  Widget _vargaRow(Map<String, dynamic> p,
+      {bool isHeader = false, required bool last, required double? realDegree}) {
     final headerStyle = AppText.sans(
         size: 9,
         weight: FontWeight.w700,
         color: AppColors.textPrimary.withValues(alpha: 0.4),
         letterSpacing: 0.8);
     final degreeCell = isHeader
-        ? p['degreeInSign'] as String
-        : '${_formatDeg(p['degreeInSign'] as double)}${(p['retrograde'] as bool) ? ' R' : ''}';
+        ? 'DEG'
+        : realDegree == null
+            ? '—'
+            : '${_formatDeg(realDegree)}${(p['retrograde'] as bool) ? ' R' : ''}';
     final houseCell = isHeader ? p['house'] as String : (p['house'] as int?)?.toString() ?? '—';
     return Container(
       padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: isHeader ? 10 : 13),
@@ -1268,27 +1304,17 @@ class _ChartsTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4) KP System tab — cuspal sub-lord table
+// 4) KP System tab — the planets table: position + full lordship chain
 // ─────────────────────────────────────────────────────────────────────────────
 class _KpTab extends StatelessWidget {
   const _KpTab({this.chart});
 
   final Map<String, dynamic>? chart;
 
-  // House, Sign, Star (Nakshatra) Lord, Sub Lord.
-  static const _mockRows = <List<String>>[
-    ['1', 'Leo', 'Sun', 'Venus'], ['2', 'Virgo', 'Mercury', 'Saturn'],
-    ['3', 'Libra', 'Venus', 'Mercury'], ['4', 'Scorpio', 'Ketu', 'Mars'],
-    ['5', 'Sagittarius', 'Jupiter', 'Rahu'], ['6', 'Capricorn', 'Saturn', 'Sun'],
-    ['7', 'Aquarius', 'Saturn', 'Moon'], ['8', 'Pisces', 'Jupiter', 'Ketu'],
-    ['9', 'Aries', 'Mars', 'Venus'], ['10', 'Taurus', 'Venus', 'Jupiter'],
-    ['11', 'Gemini', 'Mercury', 'Saturn'], ['12', 'Cancer', 'Moon', 'Mars'],
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final cusps = chart == null ? null : chart!['cusps'] as List<dynamic>;
-    final locked = chart != null && cusps!.isEmpty;
+    final planets = chart == null ? null : chart!['kp'] as List<dynamic>;
+    final locked = chart != null && planets!.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1296,132 +1322,124 @@ class _KpTab extends StatelessWidget {
         Text('KP System', style: AppText.serif(size: 22, color: AppColors.textPrimary)),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'A Krishnamurti Paddhati read of your chart — sub-lord detail for '
-          'those already familiar with the system.',
+          'A Krishnamurti Paddhati read of your chart — the full lordship '
+          'chain behind every planet, for those already familiar with the '
+          'system.',
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
         ),
         const SizedBox(height: AppSpacing.md),
         _howToReadNote(
-          'Every house cusp has three rulers: the Sign Lord (rules the sign '
-          'the cusp falls in), the Star Lord (rules the Nakshatra at that '
-          'exact degree), and the Sub Lord (a finer 249-part division within '
-          'the Nakshatra). In KP, the Sub Lord is treated as the real '
-          "decision-maker for that house — often weighted above the sign.",
+          'Each position carries four rulers, from coarse to fine: the Sign '
+          'Lord rules the sign it falls in, the Nakshatra Lord the star, and '
+          'the Sub and Sub-Sub Lords come from dividing that star twice over. '
+          'KP treats the Sub Lord as the real decision-maker — often weighted '
+          'above the sign itself.',
         ),
         const SizedBox(height: AppSpacing.lg),
         if (locked)
-          _lockedNotice()
+          _kpLockedNotice('KP lordships are read off the Placidus house cusps, '
+              'which need a birth time exact to the minute.')
         else ...[
-          const SectionLabel('CUSPAL SUB-LORDS'),
+          const SectionLabel('PLANETS'),
           const SizedBox(height: AppSpacing.md),
-          GlassCard(
-            padding: EdgeInsets.zero,
-            radius: AppRadius.md,
-            child: Column(
-              children: [
-                _row(const ['HOUSE', 'SIGN', 'STAR LORD', 'SUB LORD'], isHeader: true),
-                if (cusps != null)
-                  for (int i = 0; i < cusps.length; i++)
-                    _rowReal(cusps[i] as Map<String, dynamic>, last: i == cusps.length - 1)
-                else
-                  for (int i = 0; i < _mockRows.length; i++)
-                    _row(_mockRows[i], last: i == _mockRows.length - 1),
-              ],
-            ),
+          KpTable(
+            firstColumnLabel: 'Pla',
+            rows: [
+              if (planets != null)
+                for (final p in planets)
+                  _kpRow(
+                    p as Map<String, dynamic>,
+                    label: kpAbbreviation(p['planet'] as String) +
+                        ((p['retrograde'] as bool? ?? false) ? '(R)' : ''),
+                  )
+              else
+                ..._mockPlanetRows,
+            ],
           ),
+          const SizedBox(height: AppSpacing.md),
+          _kpLegend(),
         ],
       ],
     );
   }
 
-  Widget _lockedNotice() {
-    return GlassCard(
-      fill: AppColors.critical,
-      fillOpacity: 0.12,
-      borderColor: AppColors.criticalText.withValues(alpha: 0.4),
-      radius: AppRadius.md,
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      child: Column(
-        children: [
-          const Icon(Icons.lock_outline, size: 32, color: AppColors.criticalText),
-          const SizedBox(height: AppSpacing.md),
-          Text('Requires exact birth time',
-              style: AppText.serif(size: 16, color: AppColors.textPrimary)),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'KP sub-lords depend on the Placidus house cusps, which need a birth '
-            'time exact to the minute.',
+  static final _mockPlanetRows = <KpTableRow>[
+    for (final r in const [
+      ['Asc', "346°49'50\"", 'Ju', 'Me', 'Me', 'Me'],
+      ['Su', "139°53'39\"", 'Su', 'Ve', 'Ra', 'Mo'],
+      ['Mo', "80°15'15\"", 'Me', 'Ju', 'Ju', 'Sa'],
+      ['Ma', "82°46'34\"", 'Me', 'Ju', 'Sa', 'Ve'],
+      ['Me', "148°49'30\"", 'Su', 'Su', 'Ma', 'Sa'],
+      ['Ju', "110°41'34\"", 'Mo', 'Me', 'Ve', 'Ju'],
+      ['Ve', "183°17'49\"", 'Ve', 'Ma', 'Ve', 'Mo'],
+      ['Sa(R)', "349°10'42\"", 'Ju', 'Me', 'Ke', 'Sa'],
+      ['Ra(R)', "304°51'32\"", 'Sa', 'Ma', 'Ve', 'Ke'],
+      ['Ke(R)', "124°51'32\"", 'Su', 'Ke', 'Ma', 'Ra'],
+    ])
+      KpTableRow(
+        label: r[0], degree: r[1], signLord: r[2],
+        starLord: r[3], subLord: r[4], subSubLord: r[5],
+      ),
+  ];
+}
+
+/// One table row from a `kp` or `cusps` entry — both carry the same
+/// `signIndex`/`degreeInSign`/`lordship` shape, which is exactly why KP calls
+/// this a lordship chain rather than something planet-specific.
+KpTableRow _kpRow(Map<String, dynamic> e, {required String label}) {
+  final lordship = e['lordship'] as Map<String, dynamic>;
+  return KpTableRow(
+    label: label,
+    degree: formatKpDegree(
+        e['signIndex'] as int, (e['degreeInSign'] as num).toDouble()),
+    signLord: kpAbbreviation(lordship['signLord'] as String),
+    starLord: kpAbbreviation(lordship['starLord'] as String),
+    subLord: kpAbbreviation(lordship['subLord'] as String),
+    subSubLord: kpAbbreviation(lordship['subSubLord'] as String),
+  );
+}
+
+/// The column abbreviations aren't guessable, so they're spelled out under
+/// every KP table rather than assumed.
+Widget _kpLegend() {
+  return Text(
+    'SL — Sign Lord   ·   NL — Nakshatra Lord\n'
+    'SB — Sub Lord   ·   SS — Sub-Sub Lord   ·   (R) retrograde\n'
+    'Positions use the KP (Krishnamurti) ayanamsa, not Lahiri — so these '
+    'degrees differ slightly from the other Kundli tabs by design.',
+    style: AppText.sans(size: 11, color: AppColors.textMuted, height: 1.6),
+  );
+}
+
+Widget _kpLockedNotice(String detail) {
+  return GlassCard(
+    fill: AppColors.critical,
+    fillOpacity: 0.12,
+    borderColor: AppColors.criticalText.withValues(alpha: 0.4),
+    radius: AppRadius.md,
+    padding: const EdgeInsets.all(AppSpacing.xxl),
+    child: Column(
+      children: [
+        const Icon(Icons.lock_outline, size: 32, color: AppColors.criticalText),
+        const SizedBox(height: AppSpacing.md),
+        Text('Requires exact birth time',
+            style: AppText.serif(size: 16, color: AppColors.textPrimary)),
+        const SizedBox(height: AppSpacing.sm),
+        Text(detail,
             textAlign: TextAlign.center,
-            style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _rowReal(Map<String, dynamic> c, {required bool last}) {
-    final lordship = c['lordship'] as Map<String, dynamic>;
-    return _row([
-      '${c['house']}',
-      c['sign'] as String,
-      lordship['starLord'] as String,
-      lordship['subLord'] as String,
-    ], last: last);
-  }
-
-  Widget _row(List<String> cells, {bool isHeader = false, bool last = false}) {
-    final headerStyle = AppText.sans(
-        size: 9,
-        weight: FontWeight.w700,
-        color: AppColors.textPrimary.withValues(alpha: 0.4),
-        letterSpacing: 0.8);
-    Widget cell(int i, int flex, {Color? color}) => Expanded(
-          flex: flex,
-          child: Text(cells[i],
-              style: isHeader
-                  ? headerStyle
-                  : AppText.sans(size: 12, color: color ?? AppColors.textPrimary)),
-        );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 13),
-      decoration: BoxDecoration(
-        color: isHeader ? AppColors.textPrimary.withValues(alpha: 0.02) : null,
-        border: last
-            ? null
-            : Border(
-                bottom: BorderSide(
-                    color: AppColors.textPrimary.withValues(alpha: 0.05))),
-      ),
-      child: Row(
-        children: [
-          cell(0, 2, color: AppColors.gold),
-          cell(1, 3),
-          cell(2, 3, color: AppColors.textTan),
-          cell(3, 3, color: AppColors.amber),
-        ],
-      ),
-    );
-  }
+            style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5)),
+      ],
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5) Cusp Chart tab — precise cusp degree + planets at each of the 12 houses
+// 5) Cusp Chart tab — the cusps table: each house's degree + lordship chain
 // ─────────────────────────────────────────────────────────────────────────────
 class _CuspTab extends StatelessWidget {
   const _CuspTab({this.chart});
 
   final Map<String, dynamic>? chart;
-
-  // House, Cusp degree, Sign, Planets at cusp (— if none).
-  static const _mockRows = <List<String>>[
-    ['1', "12°44'", 'Leo', '—'], ['2', "09°10'", 'Virgo', '—'],
-    ['3', "07°55'", 'Libra', 'Rahu'], ['4', "10°02'", 'Scorpio', 'Saturn'],
-    ['5', "14°38'", 'Sagittarius', '—'], ['6', "16°21'", 'Capricorn', 'Mars'],
-    ['7', "12°44'", 'Aquarius', 'Sun, Mercury, Venus'],
-    ['8', "09°10'", 'Pisces', '—'], ['9', "07°55'", 'Aries', 'Ketu'],
-    ['10', "10°02'", 'Taurus', 'Moon'], ['11', "14°38'", 'Gemini', '—'],
-    ['12', "16°21'", 'Cancer', '—'],
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1434,100 +1452,105 @@ class _CuspTab extends StatelessWidget {
         Text('Cusp Chart', style: AppText.serif(size: 22, color: AppColors.textPrimary)),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'The precise starting degree of each of the twelve houses, and the '
-          'planets that fall on each cusp.',
+          'The exact starting degree of each of the twelve houses, with the '
+          'lordship chain that governs it.',
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _howToReadNote(
+          "A house's Sub Lord is what KP actually judges the house on — "
+          'whether it promises the matter that house rules. House 1 is the '
+          'Ascendant itself, so its row matches the Asc row on the KP System '
+          'tab exactly.',
         ),
         const SizedBox(height: AppSpacing.lg),
         if (locked)
-          _lockedNotice()
-        else
-          GlassCard(
-            padding: EdgeInsets.zero,
-            radius: AppRadius.md,
-            child: Column(
-              children: [
-                _row(const ['H', 'CUSP', 'SIGN', 'PLANETS'], isHeader: true),
-                if (cusps != null)
-                  for (int i = 0; i < cusps.length; i++)
-                    _rowReal(cusps[i] as Map<String, dynamic>, last: i == cusps.length - 1)
-                else
-                  for (int i = 0; i < _mockRows.length; i++)
-                    _row(_mockRows[i], last: i == _mockRows.length - 1),
-              ],
-            ),
+          _kpLockedNotice(
+              'House cusps need a birth time exact to the minute.')
+        else ...[
+          const SectionLabel('CUSPS'),
+          const SizedBox(height: AppSpacing.md),
+          KpTable(
+            firstColumnLabel: 'Hos',
+            rows: [
+              if (cusps != null)
+                for (final c in cusps)
+                  _kpRow(c as Map<String, dynamic>,
+                      label: '${c['house']}')
+              else
+                ..._mockCuspRows,
+            ],
           ),
+          const SizedBox(height: AppSpacing.md),
+          _kpLegend(),
+          if (cusps != null) ...[
+            const SizedBox(height: AppSpacing.xl),
+            const SectionLabel('PLANETS IN EACH HOUSE'),
+            const SizedBox(height: AppSpacing.md),
+            // Kept from the previous Cusp tab: the lordship table above says
+            // who governs a house, this says who is actually sitting in it.
+            GlassCard(
+              radius: AppRadius.md,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final c in cusps)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 34,
+                            child: Text('${(c as Map<String, dynamic>)['house']}',
+                                style: AppText.sans(
+                                    size: 13,
+                                    weight: FontWeight.w600,
+                                    color: AppColors.gold)),
+                          ),
+                          Expanded(
+                            child: Text(
+                              ((c['planets'] as List<dynamic>).cast<String>()).isEmpty
+                                  ? '—'
+                                  : (c['planets'] as List<dynamic>)
+                                      .cast<String>()
+                                      .join(', '),
+                              style: AppText.sans(
+                                  size: 13, color: AppColors.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ],
     );
   }
 
-  Widget _lockedNotice() {
-    return GlassCard(
-      fill: AppColors.critical,
-      fillOpacity: 0.12,
-      borderColor: AppColors.criticalText.withValues(alpha: 0.4),
-      radius: AppRadius.md,
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      child: Column(
-        children: [
-          const Icon(Icons.lock_outline, size: 32, color: AppColors.criticalText),
-          const SizedBox(height: AppSpacing.md),
-          Text('Requires exact birth time',
-              style: AppText.serif(size: 16, color: AppColors.textPrimary)),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'House cusps need a birth time exact to the minute.',
-            textAlign: TextAlign.center,
-            style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
-          ),
-        ],
+  static final _mockCuspRows = <KpTableRow>[
+    for (final r in const [
+      ['1', "346°49'50\"", 'Ju', 'Me', 'Me', 'Me'],
+      ['2', "20°46'44\"", 'Ma', 'Ve', 'Ju', 'Me'],
+      ['3', "48°36'34\"", 'Ve', 'Mo', 'Me', 'Mo'],
+      ['4', "73°44'35\"", 'Me', 'Ra', 'Me', 'Ra'],
+      ['5', "99°48'22\"", 'Mo', 'Sa', 'Ve', 'Sa'],
+      ['6', "130°15'49\"", 'Su', 'Ke', 'Sa', 'Ve'],
+      ['7', "166°49'50\"", 'Me', 'Mo', 'Sa', 'Su'],
+      ['8', "200°46'44\"", 'Ve', 'Ju', 'Ju', 'Ke'],
+      ['9', "228°36'34\"", 'Ma', 'Me', 'Ke', 'Ve'],
+      ['10', "253°44'35\"", 'Ju', 'Ve', 'Ve', 'Su'],
+      ['11', "279°48'22\"", 'Sa', 'Su', 'Ve', 'Me'],
+      ['12', "310°15'49\"", 'Sa', 'Ra', 'Ju', 'Ra'],
+    ])
+      KpTableRow(
+        label: r[0], degree: r[1], signLord: r[2],
+        starLord: r[3], subLord: r[4], subSubLord: r[5],
       ),
-    );
-  }
-
-  Widget _rowReal(Map<String, dynamic> c, {required bool last}) {
-    final planets = (c['planets'] as List<dynamic>).cast<String>();
-    return _row([
-      '${c['house']}',
-      _formatDeg(c['degreeInSign'] as double),
-      c['sign'] as String,
-      planets.isEmpty ? '—' : planets.join(', '),
-    ], last: last);
-  }
-
-  Widget _row(List<String> cells, {bool isHeader = false, bool last = false}) {
-    final headerStyle = AppText.sans(
-        size: 9,
-        weight: FontWeight.w700,
-        color: AppColors.textPrimary.withValues(alpha: 0.4),
-        letterSpacing: 0.8);
-    Widget cell(int i, int flex, {Color? color}) => Expanded(
-          flex: flex,
-          child: Text(cells[i],
-              style: isHeader
-                  ? headerStyle
-                  : AppText.sans(size: 12, color: color ?? AppColors.textPrimary)),
-        );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 13),
-      decoration: BoxDecoration(
-        color: isHeader ? AppColors.textPrimary.withValues(alpha: 0.02) : null,
-        border: last
-            ? null
-            : Border(
-                bottom: BorderSide(
-                    color: AppColors.textPrimary.withValues(alpha: 0.05))),
-      ),
-      child: Row(
-        children: [
-          cell(0, 2, color: AppColors.gold),
-          cell(1, 3, color: AppColors.textTan),
-          cell(2, 3),
-          cell(3, 5, color: AppColors.amber),
-        ],
-      ),
-    );
-  }
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
