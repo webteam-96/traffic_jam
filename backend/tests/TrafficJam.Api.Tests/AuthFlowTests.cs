@@ -20,7 +20,7 @@ public class AuthFlowTests : IClassFixture<TrafficJamApiFactory>, IAsyncLifetime
         var client = _factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/auth/dev-login",
-            new DevLoginRequest("+919876512345", "654321"));
+            new DevLoginRequest("+919999999999", "123456"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<SessionResponse>();
@@ -33,7 +33,7 @@ public class AuthFlowTests : IClassFixture<TrafficJamApiFactory>, IAsyncLifetime
         var client = _factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/auth/dev-login",
-            new DevLoginRequest("+919876512346", "000000"));
+            new DevLoginRequest("+919999999999", "000000"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -42,7 +42,7 @@ public class AuthFlowTests : IClassFixture<TrafficJamApiFactory>, IAsyncLifetime
     public async Task DevLogin_WithSamePhoneTwice_ReturnsTheSameUser()
     {
         var client = _factory.CreateClient();
-        var request = new DevLoginRequest("+919876512347", "654321");
+        var request = new DevLoginRequest("+919999999999", "123456");
 
         var first = await AuthedMeAsync(client, await client.PostAsJsonAsync("/auth/dev-login", request));
         var second = await AuthedMeAsync(client, await client.PostAsJsonAsync("/auth/dev-login", request));
@@ -154,41 +154,52 @@ public class AuthFlowTests : IClassFixture<TrafficJamApiFactory>, IAsyncLifetime
         return (await response.Content.ReadFromJsonAsync<MeResponse>())!;
     }
 
-    // Apple's submission form carries sign-in credentials in plain text, so the
-    // App Review account's code has to be one that unlocks nothing else.
-    [Fact]
-    public async Task DevLogin_ReviewAccountCode_DoesNotWorkForAnyOtherNumber()
-    {
-        var client = _factory.CreateClient();
-
-        var otherNumber = await client.PostAsJsonAsync("/auth/dev-login",
-            new DevLoginRequest("+919812345678", "123456"));
-
-        Assert.Equal(HttpStatusCode.Unauthorized, otherNumber.StatusCode);
-    }
-
-    [Fact]
-    public async Task DevLogin_ReviewAccount_SignsInWithItsOwnCode()
-    {
-        var client = _factory.CreateClient();
-
-        var review = await client.PostAsJsonAsync("/auth/dev-login",
-            new DevLoginRequest("+919999999999", "123456"));
-
-        Assert.Equal(HttpStatusCode.OK, review.StatusCode);
-    }
-
-    // The rejection must not name the code it wanted — the old message did.
-    [Fact]
-    public async Task DevLogin_WrongCode_DoesNotRevealTheExpectedOne()
+    // The whole point of narrowing dev-login: it used to accept any phone
+    // number on a fixed code, so a guessable six digits opened an account for
+    // anyone's number. Only the single test account may sign in this way now.
+    [Theory]
+    [InlineData("+919812345678", "123456")]   // right code, wrong number
+    [InlineData("+919812345678", "654321")]   // the old universal code, now dead
+    [InlineData("+910000000000", "123456")]
+    public async Task DevLogin_AnyNumberOtherThanTheTestAccount_Is401(string phone, string otp)
     {
         var client = _factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/auth/dev-login",
-            new DevLoginRequest("+919812345679", "000000"));
-        var body = await response.Content.ReadAsStringAsync();
+            new DevLoginRequest(phone, otp));
 
-        Assert.DoesNotContain("123456", body);
-        Assert.DoesNotContain("654321", body);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DevLogin_TestAccount_SignsInWithItsOwnCode()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/dev-login",
+            new DevLoginRequest("+919999999999", "123456"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // The rejection must not name the code it wanted — the original message
+    // printed it outright — nor differ between "wrong number" and "wrong code",
+    // which would let someone map which numbers exist.
+    [Fact]
+    public async Task DevLogin_Rejection_RevealsNeitherTheCodeNorWhichPartWasWrong()
+    {
+        var client = _factory.CreateClient();
+
+        var wrongCode = await client.PostAsJsonAsync("/auth/dev-login",
+            new DevLoginRequest("+919999999999", "000000"));
+        var wrongNumber = await client.PostAsJsonAsync("/auth/dev-login",
+            new DevLoginRequest("+919812345679", "123456"));
+
+        var wrongCodeBody = await wrongCode.Content.ReadAsStringAsync();
+        var wrongNumberBody = await wrongNumber.Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("123456", wrongCodeBody);
+        Assert.DoesNotContain("9999999999", wrongCodeBody);
+        Assert.Equal(wrongCodeBody, wrongNumberBody);
     }
 }
