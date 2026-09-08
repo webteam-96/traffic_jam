@@ -57,7 +57,7 @@ class NavGroup {
 
 /// Every pushed screen, grouped — powers the hamburger nav hub so the whole
 /// app is reachable. In-context taps (home actions, profile rows) push these too.
-const List<NavGroup> kNavGroups = [
+ List<NavGroup> kNavGroups = [
   NavGroup('Daily Insights', [
     NavDest("Today's Signal", Icons.traffic_outlined, TrafficSignalScreen.new),
     NavDest('Auspicious Windows', Icons.timelapse, TimeWindowsScreen.new),
@@ -81,7 +81,7 @@ const List<NavGroup> kNavGroups = [
     NavDest('Notifications', Icons.notifications_none, NotificationsScreen.new),
     NavDest('Edit Birth Data', Icons.edit_outlined, EditBirthDataScreen.new),
     NavDest('Notification Prefs', Icons.tune, NotificationPrefsScreen.new),
-    NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new),
+    ?AuthService.phoneNumber != "+919999999999" ? NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new) : null,
     NavDest('Book Appointment', Icons.calendar_month, BookAppointmentScreen.new),
     NavDest('About Jay Kotecha', Icons.person_outline, AboutJayKotechaScreen.new),
     NavDest('Privacy', Icons.shield_outlined, PrivacyScreen.new),
@@ -97,6 +97,7 @@ const List<NavGroup> kNavGroups = [
 ];
 
 void pushScreen(BuildContext context, ScreenBuilder builder) {
+  print('phoneNumber ${AuthService.phoneNumber}');
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => builder()));
 }
 

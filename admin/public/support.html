@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  Public support page for TrafficJam.Life.
+
+  Lives in admin/public/ deliberately. Vite copies this directory to the build
+  output verbatim, so it ships as a plain file at /support.html on the same
+  host as the Control Room — served straight by the web server, never routed
+  through the React app. That is what keeps it public: it isn't a route, so
+  there is no Gate around it and no way for the admin login to start guarding
+  it by accident.
+
+  Also why it has no build step, no framework and no external requests: the
+  App Store lists this URL as the app's support contact, Apple's reviewers
+  open it, and it has to render even if the admin bundle fails to load.
+
+  BEFORE DEPLOYING: replace SUPPORT_EMAIL_PLACEHOLDER (three occurrences)
+  with a mailbox that is actually monitored. Apple checks that this page
+  loads and that the contact route on it works.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — TrafficJam.Life</title>
+<meta name="description" content="Help and contact for the TrafficJam.Life Vedic astrology app.">
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root {
+    --ink:        #1c1430;
+    --ink-soft:   #43395c;
+    --muted:      #6b6280;
+    --rule:       #e6e2ef;
+    --ground:     #faf9fc;
+    --surface:    #ffffff;
+    --gold:       #a97c12;
+    --gold-bg:    #fdf5e2;
+    --gold-border:#f0dfae;
+    --navy:       #1a1f4d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    background: var(--navy);
+    color: #fff;
+    padding: 2.75rem 1.5rem 2.25rem;
+  }
+  header .inner { max-width: 46rem; margin: 0 auto; }
+  header h1 {
+    margin: 0 0 .4rem;
+    font-size: 1.9rem;
+    letter-spacing: -.01em;
+    font-weight: 600;
+  }
+  header p { margin: 0; color: #cfd0e4; font-size: 1.02rem; }
+  .brand {
+    display: inline-block;
+    margin-bottom: 1.1rem;
+    font-size: .78rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #f4c94f;
+  }
+
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+
+  section { margin-bottom: 2.75rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 0 0 .85rem;
+    letter-spacing: -.005em;
+  }
+  h3 { font-size: 1rem; margin: 1.5rem 0 .35rem; }
+  h3:first-of-type { margin-top: 0; }
+  p  { margin: 0 0 .9rem; max-width: 62ch; }
+  p:last-child { margin-bottom: 0; }
+  a  { color: var(--gold); }
+
+  .contact {
+    background: var(--gold-bg);
+    border: 1px solid var(--gold-border);
+    border-radius: 10px;
+    padding: 1.4rem 1.5rem;
+  }
+  .contact .email {
+    display: inline-block;
+    margin: .3rem 0 .6rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    word-break: break-all;
+  }
+  .contact .small { color: var(--muted); font-size: .92rem; margin: 0; }
+
+  .faq {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1.4rem 1.5rem;
+  }
+  .faq h3 { color: var(--ink); }
+  .faq p  { color: var(--ink-soft); }
+  .faq hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
+
+  ul { margin: 0 0 .9rem; padding-left: 1.15rem; max-width: 62ch; }
+  li { margin-bottom: .4rem; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding: 1.6rem 1.5rem 3rem;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+  footer .inner { max-width: 46rem; margin: 0 auto; }
+
+  @media (max-width: 34rem) {
+    header { padding: 2rem 1.15rem 1.75rem; }
+    header h1 { font-size: 1.55rem; }
+    main { padding: 2rem 1.15rem 3rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <span class="brand">TrafficJam.Life</span>
+    <h1>Support</h1>
+    <p>Help with your account, your birth chart, or a consultation.</p>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2>Get in touch</h2>
+    <div class="contact">
+      <p class="small">Email us and we'll reply within two working days.</p>
+      <a class="email" href="mailto:SUPPORT_EMAIL_PLACEHOLDER">SUPPORT_EMAIL_PLACEHOLDER</a>
+      <p class="small">
+        It helps to include the mobile number your account uses and, if you're
+        writing about a reading, the name on the chart.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>About the app</h2>
+    <p>
+      TrafficJam.Life is a Vedic astrology app. It casts your birth chart from
+      the astronomical positions of the planets at the moment you were born,
+      and gives you your Dasha periods, today's Panchang, doshas and remedies.
+      When a chart isn't enough, you can put a question directly to astrologer
+      Jay Kotecha or book a consultation.
+    </p>
+  </section>
+
+  <section>
+    <h2>Common questions</h2>
+    <div class="faq">
+
+      <h3>I don't know my exact birth time. Can I still use the app?</h3>
+      <p>
+        Yes. Your planetary signs, Nakshatra and Dasha periods are all
+        calculated without it. What needs an exact time is the Ascendant, and
+        anything counted from it — the house placements, the KP and Cusp
+        screens, and the D60 chart. The app marks those clearly rather than
+        showing a result it can't stand behind. Add your time later in
+        Profile → Edit Birth Data and everything fills in.
+      </p>
+
+      <hr>
+
+      <h3>My birth details are wrong. How do I change them?</h3>
+      <p>
+        Profile → Edit Birth Data. Your charts, Dasha timeline and daily
+        readings are all recalculated from the new details straight away.
+      </p>
+
+      <hr>
+
+      <h3>When will Jay answer my question?</h3>
+      <p>
+        Within the window of the response priority you chose when you asked —
+        four hours on Standard, one hour on Priority. Replies appear in the
+        same conversation inside Ask Jay, and you'll find every question you've
+        asked under Ask Jay → My Questions.
+      </p>
+
+      <hr>
+
+      <h3>How do I cancel a subscription?</h3>
+      <p>
+        Subscriptions bought through the App Store are managed by Apple, not by
+        us: open the Settings app on your iPhone, tap your name, then
+        Subscriptions. On Android, open the Play Store, tap your profile
+        picture, then Payments &amp; subscriptions. Cancelling stops future
+        renewals; you keep access until the current period ends.
+      </p>
+
+      <hr>
+
+      <h3>Can I get a copy of my data, or delete my account?</h3>
+      <p>
+        Both are in the app, under Profile → Privacy. <strong>Export my
+        data</strong> gives you your profile, birth data, questions and
+        appointment history. <strong>Delete account</strong> permanently
+        removes your profile, birth data, charts and consultation history —
+        this cannot be undone.
+      </p>
+
+      <hr>
+
+      <h3>Is a reading from the app the same as advice?</h3>
+      <p>
+        No. TrafficJam.Life is offered for guidance and reflection. It is not a
+        substitute for professional medical, legal or financial advice, and
+        nothing in the app should be treated as such.
+      </p>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Reporting a problem</h2>
+    <p>
+      If something looks wrong in a chart, please tell us what you expected and
+      what you saw, and include the birth date, time and place involved — an
+      astrological calculation can't be checked without them. Screenshots help.
+    </p>
+    <p>
+      For anything account-related, please write from the email address on the
+      account or include the mobile number it uses, so we know we're talking to
+      the right person.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="inner">
+    <p>
+      TrafficJam.Life &middot; Kaizen Infotech &middot;
+      <a href="mailto:SUPPORT_EMAIL_PLACEHOLDER">Contact support</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

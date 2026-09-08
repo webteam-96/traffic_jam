@@ -107,11 +107,6 @@ class _OtpScreenState extends State<OtpScreen> {
             'Enter the 6-digit code sent to +91 ${widget.phoneNumber}',
             style: AppText.body,
           ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            'Dev mode — no real SMS is sent. Use code 123456.',
-            style: AppText.bodySmall.copyWith(color: AppColors.gold),
-          ),
           const SizedBox(height: AppSpacing.section),
 
           // Six boxes driven by one offstage TextField overlaid for taps.

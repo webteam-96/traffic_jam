@@ -63,10 +63,21 @@ public static class AuthEndpoints
                 return Results.NotFound();
             }
 
-            const string devOtp = "123456";
-            if (request.Otp != devOtp)
+            // The App Review account gets its own code. Apple's submission form
+            // requires sign-in credentials in plain text on a web page, so the
+            // code written there must not be the one that opens every other
+            // number's account.
+            const string reviewPhoneNumber = "+919999999999";
+            const string reviewOtp = "123456";
+            const string devOtp = "654321";
+
+            var expectedOtp = request.PhoneNumber == reviewPhoneNumber ? reviewOtp : devOtp;
+            if (request.Otp != expectedOtp)
             {
-                return Results.Json(new { error = new { code = "INVALID_OTP", message = $"Dev mode OTP is always '{devOtp}'." } },
+                // Deliberately does not name the expected code — the old message
+                // printed it, which handed the whole mechanism to anyone who
+                // typed a wrong digit once.
+                return Results.Json(new { error = new { code = "INVALID_OTP", message = "That code isn't right." } },
                     statusCode: StatusCodes.Status401Unauthorized);
             }
 
