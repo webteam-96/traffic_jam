@@ -17,39 +17,14 @@ class AskJayScreen extends StatefulWidget {
 class _AskJayScreenState extends State<AskJayScreen> {
   static const _domains = ['Career', 'Relationship', 'Business'];
   int _domain = 0;
-  int _plan = 1; // 0 = Standard, 1 = Priority (active by default in design)
+  /// The seeded standard-priority consult plan — see ConsultPlanRows.
+  static const _standardPlanId = 'standard';
   final _question = TextEditingController();
   bool _sending = false;
-
-  List<Map<String, dynamic>> _plans = [];
-  bool _loadingPlans = true;
 
   // White-input colors are design-specific (no dark-theme token fits).
   static const _inputText = Color(0xFF374151);
   static const _inputHint = Color(0xFF6B7280);
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPlans();
-  }
-
-  Future<void> _loadPlans() async {
-    try {
-      final plans = await ConsultApi.getPlans();
-      if (!mounted) return;
-      setState(() {
-        _plans = plans;
-        _loadingPlans = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingPlans = false);
-    }
-  }
-
-  /// Pull-to-refresh. Without it, a failed plan fetch left the pricing
-  /// permanently blank with no way to ask again short of restarting the app.
-  Future<void> _refresh() => _loadPlans();
 
   @override
   void dispose() {
@@ -63,16 +38,14 @@ class _AskJayScreenState extends State<AskJayScreen> {
       toast(context, 'Type your question first');
       return;
     }
-    if (_plan >= _plans.length) {
-      toast(context, "Couldn't load plans — check your connection.");
-      return;
-    }
-    setState(() => _sending = true);
     try {
       final result = await ConsultApi.askQuestion(
         domain: _domains[_domain],
         question: text,
-        planId: _plans[_plan]['id'] as String,
+        // Every question goes in at the standard response time: the paid
+        // priority tier isn't offered while the app has no way to take a
+        // payment, so there is nothing to choose between.
+        planId: _standardPlanId,
       );
       if (!mounted) return;
       _question.clear();
@@ -91,7 +64,6 @@ class _AskJayScreenState extends State<AskJayScreen> {
   @override
   Widget build(BuildContext context) {
     return CosmicScrollView(
-      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -152,38 +124,6 @@ class _AskJayScreenState extends State<AskJayScreen> {
           ),
           const SizedBox(height: AppSpacing.section),
 
-          // ── Response priority ─────────────────────────────────
-          const SectionLabel('RESPONSE PRIORITY', color: AppColors.goldLight),
-          const SizedBox(height: AppSpacing.lg),
-          if (_loadingPlans)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: LoadingView(height: null),
-            )
-          // An empty list here always means the fetch failed — the two
-          // priority tiers are seeded server-side and never legitimately
-          // absent — so it's safe to offer this as a retry rather than as an
-          // "no plans available" state.
-          else if (_plans.isEmpty)
-            RetryView(
-              height: null,
-              message: "Couldn't load response priority options",
-              onRetry: _refresh,
-            )
-          else
-            for (int i = 0; i < _plans.length; i++) ...[
-              _planCard(
-                index: i,
-                title: _plans[i]['name'] as String,
-                price: '₹${_plans[i]['priceRupees']}',
-                popular: _plans[i]['id'] == 'priority',
-                features: [
-                  _Feature('Response within ${_plans[i]['slaHours']} hour${_plans[i]['slaHours'] == 1 ? '' : 's'}',
-                      strong: _plans[i]['id'] == 'priority'),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-            ],
           const SizedBox(height: AppSpacing.xxl),
 
           // ── Send ──────────────────────────────────────────────
@@ -261,133 +201,6 @@ class _AskJayScreenState extends State<AskJayScreen> {
     );
   }
 
-  // ── Plan card (Standard / Priority) ─────────────────────────
-  Widget _planCard({
-    required int index,
-    required String title,
-    required String price,
-    required List<Widget> features,
-    bool popular = false,
-  }) {
-    final selected = _plan == index;
-    final card = GlassCard(
-      fill: AppColors.surfaceRaised,
-      fillOpacity: 0.6,
-      borderColor: AppColors.borderSoft,
-      goldTopBorder: selected,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      onTap: () => setState(() => _plan = index),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: AppText.serif(
-                  size: 24,
-                  color: selected ? AppColors.goldLight : AppColors.textCream,
-                  height: 1.4,
-                ),
-              ),
-              Text(
-                price,
-                style: AppText.serif(
-                  size: 24,
-                  color: AppColors.gold,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          ...features,
-          const SizedBox(height: AppSpacing.lg),
-          _planButton(selected),
-        ],
-      ),
-    );
-
-    if (!popular) return card;
-    // Corner "POPULAR" ribbon — outer clip trims it to a diagonal sliver.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: Stack(
-        children: [
-          card,
-          Positioned(
-            top: 14,
-            right: -30,
-            child: Transform.rotate(
-              angle: 0.7853981634, // 45°
-              child: Container(
-                color: AppColors.gold,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 36,
-                  vertical: 3,
-                ),
-                child: Text(
-                  'POPULAR',
-                  style: AppText.sans(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    color: AppColors.textOnGold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _planButton(bool selected) {
-    if (selected) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: AppColors.gold,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.gold.withValues(alpha: 0.3),
-              blurRadius: 8,
-            ),
-          ],
-        ),
-        child: Text(
-          'Active Selection',
-          textAlign: TextAlign.center,
-          style: AppText.sans(
-            size: 16,
-            weight: FontWeight.w700,
-            color: AppColors.textOnGold,
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Text(
-        'Select Plan',
-        textAlign: TextAlign.center,
-        style: AppText.sans(
-          size: 16,
-          weight: FontWeight.w700,
-          color: AppColors.textTan,
-        ),
-      ),
-    );
-  }
 
   // ── Wisdom of the Freeways (image + stats) ──────────────────
   Widget _wisdomCard() {
@@ -443,10 +256,7 @@ class _AskJayScreenState extends State<AskJayScreen> {
                 _statRow(
                   Icons.access_time,
                   'RESPONSE TIME',
-                  _plans.isEmpty
-                      ? 'Priority questions get the fastest turnaround.'
-                      : 'Priority questions get a reply within '
-                          '${_plans.firstWhere((p) => p['id'] == 'priority', orElse: () => _plans.first)['slaHours']} hour(s).',
+                  'Every question gets a considered reply, not an automated one.',
                 ),
               ],
             ),
@@ -501,37 +311,3 @@ class _AskJayScreenState extends State<AskJayScreen> {
 
 }
 
-/// Check-marked feature line inside a plan card.
-class _Feature extends StatelessWidget {
-  const _Feature(this.text, {this.strong = false});
-  final String text;
-  final bool strong;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 3),
-            child: Icon(Icons.check, size: 14, color: AppColors.amber),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              text,
-              style: AppText.sans(
-                size: 14,
-                weight: strong ? FontWeight.w700 : FontWeight.w400,
-                color: strong ? AppColors.textCream : AppColors.textTan,
-                height: 20 / 14,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

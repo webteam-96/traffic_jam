@@ -5,7 +5,6 @@ import '../nav.dart';
 import '../models/kundli_profile.dart';
 import '../services/user_api.dart';
 import '../services/chart_api.dart';
-import '../services/subscription_api.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'kundli/get_kundli_screen.dart';
 import 'details/kundli_screen.dart';
@@ -31,9 +30,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _lagna, _moonSign, _sunSign, _nakshatra, _currentDasha;
   bool _loadingAstro = true;
 
-  String? _planName;
-  bool _loadingPlan = true;
-
   @override
   void initState() {
     super.initState();
@@ -46,7 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _refresh() => Future.wait([
         _loadBirthData(),
         _loadAstroIdentity(),
-        _loadPlan(),
       ]);
 
   Future<void> _loadBirthData() async {
@@ -90,29 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _loadPlan() async {
-    try {
-      final results = await Future.wait([
-        SubscriptionApi.getSubscription(),
-        SubscriptionApi.getPlans(),
-      ]);
-      final current = results[0] as Map<String, dynamic>;
-      final plans = (results[1] as List).cast<Map<String, dynamic>>();
-      final tier = current['tier'];
-      final cycle = current['cycle'];
-      final match = plans.where((p) =>
-          p['tier'] == tier && (tier == 'Free' || p['cycle'] == cycle)).firstOrNull;
-      if (!mounted) return;
-      setState(() => _planName = match?['name'] as String? ?? tier as String?);
-    } catch (_) {
-      // Leave _planName null — the card falls back to a neutral label.
-    } finally {
-      if (mounted) setState(() => _loadingPlan = false);
-    }
-  }
 
-  // Figma asset hashes (already downloaded to assets/figma/).
-  static const _badge = 'e80b18a4357c34fb7ef9d784ffdb9fd09bc69f0b.svg';
   static const _pencil = '886850b078134c9b8ae9ce201d82a869e8c8f2f9.svg';
   static const _moon = '22d29c31a70b0fb74b73605430ebb2d05311368d.svg';
   static const _bell = '03f2afc3d9eee530098fc24f30074b64e0a7359d.svg';
@@ -141,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Manage your celestial coordinates and subscription tier to '
+            'Manage your celestial coordinates to '
             'maintain alignment with the universal traffic flow.',
             style: AppText.sans(
                 size: 16, color: AppColors.textTan, height: 24 / 16),
@@ -182,55 +155,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _AstroChip('CURRENT DASHA', _currentDasha ?? '—'),
                     ],
                   ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.section),
-
-          // ── Subscription card ───────────────────────────────────────
-          _card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SectionLabel('ACTIVE PLAN',
-                              color: AppColors.gold),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(_loadingPlan ? 'Loading…' : (_planName ?? 'Free'),
-                              style: AppText.serif(
-                                  size: 26,
-                                  weight: FontWeight.w500,
-                                  color: AppColors.textOnLight,
-                                  height: 1.3)),
-                        ],
-                      ),
-                    ),
-                    const SvgIcon(_badge,
-                        width: 33, height: 31.5, color: AppColors.gold),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-                Text(
-                  'Access to deep-space transits, unlimited daily Panchang '
-                  'insights, and direct frequency with Jay.',
-                  style: AppText.sans(
-                      size: 15, color: AppColors.textTan, height: 24 / 16),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                GoldButton(
-                    label: 'MANAGE PLAN',
-                    onPressed: () => goToSubscription(context)),
-                const SizedBox(height: AppSpacing.lg),
-                GoldButton(
-                    label: 'VIEW HISTORY',
-                    outlined: true,
-                    onPressed: () => goToSubscription(context)),
               ],
             ),
           ),

@@ -27,7 +27,6 @@ import 'screens/ask/my_questions_screen.dart';
 import 'screens/remedies/remedies_screen.dart';
 import 'screens/profile/edit_birth_data_screen.dart';
 import 'screens/profile/notification_prefs_screen.dart';
-import 'screens/profile/subscription_screen.dart';
 import 'screens/profile/book_appointment_screen.dart';
 import 'screens/profile/about_jay_kotecha_screen.dart';
 import 'screens/profile/privacy_screen.dart';
@@ -57,7 +56,7 @@ class NavGroup {
 
 /// Every pushed screen, grouped — powers the hamburger nav hub so the whole
 /// app is reachable. In-context taps (home actions, profile rows) push these too.
- List<NavGroup> kNavGroups = [
+const List<NavGroup> kNavGroups = [
   NavGroup('Daily Insights', [
     NavDest("Today's Signal", Icons.traffic_outlined, TrafficSignalScreen.new),
     NavDest('Auspicious Windows', Icons.timelapse, TimeWindowsScreen.new),
@@ -81,7 +80,6 @@ class NavGroup {
     NavDest('Notifications', Icons.notifications_none, NotificationsScreen.new),
     NavDest('Edit Birth Data', Icons.edit_outlined, EditBirthDataScreen.new),
     NavDest('Notification Prefs', Icons.tune, NotificationPrefsScreen.new),
-    ?AuthService.phoneNumber != "+919999999999" ? NavDest('Subscription', Icons.workspace_premium_outlined, SubscriptionScreen.new) : null,
     NavDest('Book Appointment', Icons.calendar_month, BookAppointmentScreen.new),
     NavDest('About Jay Kotecha', Icons.person_outline, AboutJayKotechaScreen.new),
     NavDest('Privacy', Icons.shield_outlined, PrivacyScreen.new),
@@ -97,7 +95,6 @@ class NavGroup {
 ];
 
 void pushScreen(BuildContext context, ScreenBuilder builder) {
-  print('phoneNumber ${AuthService.phoneNumber}');
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => builder()));
 }
 
@@ -170,7 +167,6 @@ void goToCalculating(BuildContext c) => pushScreen(c, CalculatingScreen.new);
 // Profile / account deep-links
 void goToEditBirthData(BuildContext c) => pushScreen(c, EditBirthDataScreen.new);
 void goToNotificationPrefs(BuildContext c) => pushScreen(c, NotificationPrefsScreen.new);
-void goToSubscription(BuildContext c) => pushScreen(c, SubscriptionScreen.new);
 void goToNotifications(BuildContext c) => pushScreen(c, NotificationsScreen.new);
 // Ask Jay
 void goToChat(BuildContext c, {required String questionId}) =>
