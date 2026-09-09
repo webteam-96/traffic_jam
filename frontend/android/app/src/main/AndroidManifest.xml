@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only for Android 9 and below, where saving into the public Downloads
+         folder was a plain file write. From API 29 the app uses MediaStore,
+         which needs no permission — hence maxSdkVersion. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- enableOnBackInvokedCallback opts into Android 13+ predictive back.
          Without it the runtime logs "OnBackInvokedCallback is not enabled for
