@@ -10,6 +10,7 @@ using TrafficJam.Api.Modules.Consultation;
 using TrafficJam.Api.Modules.Astro;
 using TrafficJam.Api.Modules.Remedies;
 using TrafficJam.Api.Modules.Admin;
+using TrafficJam.Api.Modules.Astrologer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -107,6 +108,23 @@ if (builder.Configuration.GetValue<bool>("Auth:DevModeEnabled") && !builder.Envi
         "OTP '123456' for ANY phone number. This must not stay on once a real Firebase project is wired up.");
 }
 
+// Email OTP — generated and verified here, delivered over plain SMTP. Falls
+// back to a logging stand-in when Smtp:Host is unset, which lets the flow be
+// exercised in Development without a mail server (and refuses to pretend
+// anywhere else). Swap in a transactional-email provider by registering a
+// different IEmailSender; nothing else changes.
+if (string.IsNullOrWhiteSpace(builder.Configuration["Smtp:Host"]))
+{
+    builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+}
+
+// Scoped: it takes the per-request AppDbContext.
+builder.Services.AddScoped<IEmailOtpService, EmailOtpService>();
+
 builder.Services.AddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddMemoryCache();
@@ -157,6 +175,9 @@ builder.Services.AddSingleton<IPlacidusHouseCalculator, PlacidusHouseCalculator>
 builder.Services.AddSingleton<IKpService, KpService>();
 builder.Services.AddSingleton<IDoshaService, DoshaService>();
 
+// Scoped, not singleton: it takes the per-request AppDbContext.
+builder.Services.AddScoped<INotificationGenerator, NotificationGenerator>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -204,6 +225,7 @@ app.Run();
 static void MapEverythingOn(IEndpointRouteBuilder routes)
 {
     routes.MapAuthEndpoints();
+    routes.MapEmailAuthEndpoints();
     routes.MapUserEndpoints();
     routes.MapPlacesEndpoints();
     routes.MapNotificationEndpoints();
@@ -214,6 +236,7 @@ static void MapEverythingOn(IEndpointRouteBuilder routes)
     routes.MapSignalEndpoints();
     routes.MapChartEndpoints();
     routes.MapRemedyEndpoints();
+    routes.MapAstrologerEndpoints();
     routes.MapDoshaEndpoints();
     routes.MapAdminAuthEndpoints();
     routes.MapAdminDashboardEndpoints();
@@ -221,6 +244,8 @@ static void MapEverythingOn(IEndpointRouteBuilder routes)
     routes.MapAdminQuestionEndpoints();
     routes.MapAdminAppointmentEndpoints();
     routes.MapAdminRemedyEndpoints();
+    routes.MapAdminAstrologerEndpoints();
+    routes.MapAdminAppointmentSlotEndpoints();
     routes.MapAdminPlanEndpoints();
 }
 

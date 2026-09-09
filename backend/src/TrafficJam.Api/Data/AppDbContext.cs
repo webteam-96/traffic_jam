@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TrafficJam.Api.Data.Entities;
+using TrafficJam.Api.Modules.Astrologer;
 using TrafficJam.Api.Infrastructure;
 using TrafficJam.Api.Modules.Remedies;
 
@@ -26,6 +27,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
     public DbSet<NotificationPrefs> NotificationPrefs => Set<NotificationPrefs>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<RemedyContent> RemedyContent => Set<RemedyContent>();
+    public DbSet<EmailOtp> EmailOtps => Set<EmailOtp>();
+    public DbSet<AppointmentSlot> AppointmentSlots => Set<AppointmentSlot>();
+    public DbSet<AstrologerProfile> AstrologerProfile => Set<AstrologerProfile>();
+    public DbSet<AstrologerReview> AstrologerReviews => Set<AstrologerReview>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
     public DbSet<Entities.Notification> Notifications => Set<Entities.Notification>();
@@ -73,6 +78,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
             // fresh nonce every write, so equal numbers produce different
             // ciphertext — PhoneHash above is what lookups match on.
             e.Property(u => u.Phone).HasConversion(encryptedNullableString);
+            e.Property(u => u.Email).HasConversion(encryptedNullableString);
+
+            // One account per address. Filtered so the many rows with no email
+            // yet — every account today — don't collide on null.
+            e.HasIndex(u => u.EmailHash).IsUnique().HasFilter("`EmailHash` IS NOT NULL");
         });
 
         modelBuilder.Entity<BirthData>(e =>
@@ -197,10 +207,55 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IEncryptionSer
 
         modelBuilder.Entity<RemedyContent>().HasData(RemedySeedData.All);
 
+        modelBuilder.Entity<AppointmentSlot>(e =>
+        {
+            // Listing free slots is always "future, in order".
+            e.HasIndex(sl => sl.StartsAt);
+        });
+
+        modelBuilder.Entity<Appointment>(e =>
+        {
+            // The database refuses a double booking. Two users tapping the
+            // same slot in the same instant is a race no amount of
+            // check-then-insert in application code can reliably win; this
+            // makes the second one fail loudly instead of silently
+            // overwriting. Filtered so the many manual requests, which have no
+            // slot, don't all collide on null.
+            e.HasIndex(a => a.SlotId).IsUnique().HasFilter("`SlotId` IS NOT NULL");
+
+            e.HasOne(a => a.Slot)
+                .WithOne(sl => sl!.Appointment)
+                .HasForeignKey<Appointment>(a => a.SlotId)
+                // A slot can only be deleted while free (the admin endpoint
+                // enforces that), so this never fires — but restrict rather
+                // than cascade, so a mistake can't take a real booking with it.
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmailOtp>(e =>
+        {
+            // Verification looks up the newest live code for an address, so
+            // that is what the index covers.
+            e.HasIndex(o => new { o.EmailHash, o.ConsumedAt });
+            e.Property(o => o.Email).HasConversion(encryptedString);
+        });
+
         modelBuilder.Entity<AdminUser>(e =>
         {
             e.HasIndex(a => a.Email).IsUnique();
         });
+
+        // The profile photo is a base64 data URI, which overflows MySQL's
+        // default varchar(255) many times over.
+        modelBuilder.Entity<AstrologerProfile>()
+            .Property(p => p.ImageDataUri)
+            .HasColumnType("longtext");
+
+        // Seeded with what the app previously hardcoded, so the About screen
+        // reads identically the moment it starts fetching instead of going
+        // blank until someone opens the admin panel.
+        modelBuilder.Entity<AstrologerProfile>().HasData(AstrologerSeedData.Profile);
+        modelBuilder.Entity<AstrologerReview>().HasData(AstrologerSeedData.Reviews);
 
         modelBuilder.Entity<ConsultPlanRow>().HasData(
             new ConsultPlanRow { Id = "standard", Name = "Standard", PriceRupees = 99, SlaHours = 4 },

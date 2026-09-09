@@ -31,7 +31,9 @@ interface QuestionDetail extends QuestionSummary {
 const FILTERS = ["All", "Pending", "Answered", "Closed"];
 
 export function Questions() {
-  const [filter, setFilter] = useState("Pending");
+  // "All" by default: the page is the record of every question, and opening
+  // on a filtered subset made answered ones look missing.
+  const [filter, setFilter] = useState("All");
   const [items, setItems] = useState<QuestionSummary[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const toast = useToast();

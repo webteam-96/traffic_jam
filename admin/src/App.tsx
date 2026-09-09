@@ -8,6 +8,8 @@ import { Questions } from "./pages/Questions";
 import { Appointments } from "./pages/Appointments";
 import { Users } from "./pages/Users";
 import { Remedies } from "./pages/Remedies";
+import { Astrologer } from "./pages/Astrologer";
+import { AppointmentSlots } from "./pages/AppointmentSlots";
 import { Plans } from "./pages/Plans";
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -43,6 +45,8 @@ function AppRoutes() {
         <Route path="appointments" element={<Appointments />} />
         <Route path="users" element={<Users />} />
         <Route path="remedies" element={<Remedies />} />
+        <Route path="astrologer" element={<Astrologer />} />
+        <Route path="availability" element={<AppointmentSlots />} />
         <Route path="plans" element={<Plans />} />
       </Route>
     </Routes>

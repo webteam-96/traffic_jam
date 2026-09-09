@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
-import { IconDashboard, IconChat, IconCalendar, IconUsers, IconLeaf, IconTag } from "./Icons";
+import { IconDashboard, IconChat, IconCalendar, IconUsers, IconLeaf, IconTag, IconSpark } from "./Icons";
 
 interface Counts {
   pendingQuestions: number;
@@ -13,9 +13,11 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: IconDashboard, end: true },
   { to: "/questions", label: "Ask Jay", icon: IconChat, countKey: "pendingQuestions" as const },
   { to: "/appointments", label: "Appointments", icon: IconCalendar, countKey: "pendingAppointments" as const },
+  { to: "/availability", label: "Availability", icon: IconCalendar },
   { to: "/users", label: "Users", icon: IconUsers },
   { to: "/remedies", label: "Remedies", icon: IconLeaf },
   { to: "/plans", label: "Pricing", icon: IconTag },
+  { to: "/astrologer", label: "About Jay", icon: IconSpark },
 ];
 
 export function Layout() {

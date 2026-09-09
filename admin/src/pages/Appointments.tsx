@@ -37,7 +37,9 @@ const FILTERS = ["All", "Pending", "Confirmed", "Completed", "Cancelled"];
 const STATUS_OPTIONS = ["Pending", "Confirmed", "Completed", "Cancelled"];
 
 export function Appointments() {
-  const [filter, setFilter] = useState("Pending");
+  // "All" by default, matching Questions: the page is the record of every
+  // appointment, and opening on a filtered subset made the rest look missing.
+  const [filter, setFilter] = useState("All");
   const [items, setItems] = useState<Appointment[] | null>(null);
   // The user to open, plus which of their bookings was clicked — someone with
   // several requests gets that one highlighted in the drawer's list.
