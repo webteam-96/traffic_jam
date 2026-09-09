@@ -25,6 +25,21 @@ public class User
     /// </summary>
     public string? Phone { get; set; }
 
+    /// <summary>
+    /// SHA-256 of the normalised email address — the queryable key for email
+    /// sign-in, exactly as <see cref="PhoneHash"/> is for phone sign-in.
+    ///
+    /// Null on every account today: email OTP is built but not yet the app's
+    /// sign-in method, so nobody has verified an address. It fills in the
+    /// first time someone signs in by email. Uniquely indexed, so one address
+    /// can only ever belong to one account.
+    /// </summary>
+    public string? EmailHash { get; set; }
+
+    /// <summary>The readable address, AES-encrypted at rest like
+    /// <see cref="Phone"/>. Null until the account has verified one.</summary>
+    public string? Email { get; set; }
+
     public required string FirebaseUid { get; set; }
     public string? Name { get; set; }
     public string? AvatarUrl { get; set; }

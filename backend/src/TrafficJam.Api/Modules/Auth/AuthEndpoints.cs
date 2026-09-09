@@ -63,21 +63,28 @@ public static class AuthEndpoints
                 return Results.NotFound();
             }
 
-            // Exactly one account, and only with its own code. This used to
-            // accept ANY phone number on a fixed OTP, which meant a guessable
-            // six digits opened an account for any number someone cared to
-            // type — including a real user's. Narrowing it to a single test
-            // number leaves App Review a way in and closes that door on
-            // everyone else.
-            const string testPhoneNumber = "+919999999999";
-            const string testOtp = "123456";
+            // Two codes: one reserved for the App Review account, another for
+            // everyone else. Apple's submission form carries sign-in
+            // credentials in plain text on a web page, so the code written
+            // there must not be the one that opens every other number.
+            //
+            // Still a backdoor, and worth naming as one: whichever code you
+            // hold signs you in as WHATEVER number you type, including one
+            // belonging to someone else. Acceptable only while no real users
+            // exist and there is nothing of value behind an account. It closes
+            // when Firebase:CredentialsPath is configured and
+            // Auth:DevModeEnabled goes back to false — see TASKLIST.md.
+            const string reviewPhoneNumber = "+919999999999";
+            const string reviewOtp = "123456";
+            const string devOtp = "654321";
 
-            if (request.PhoneNumber != testPhoneNumber || request.Otp != testOtp)
+            var expectedOtp = request.PhoneNumber == reviewPhoneNumber ? reviewOtp : devOtp;
+
+            if (request.Otp != expectedOtp)
             {
-                // One message for both failures, and it names neither the
-                // number nor the code: a distinct "no such account" reply would
-                // let someone map which numbers exist, and the old message
-                // printed the expected OTP outright.
+                // Deliberately does not name the expected code, and reads the
+                // same whichever code was wrong — otherwise the message tells
+                // you which account you just probed.
                 return Results.Json(new { error = new { code = "INVALID_OTP", message = "That code isn't right." } },
                     statusCode: StatusCodes.Status401Unauthorized);
             }
