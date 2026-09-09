@@ -15,7 +15,6 @@ import 'screens/onboarding/consent_screen.dart';
 import 'screens/onboarding/calculating_screen.dart';
 import 'screens/details/traffic_signal_screen.dart';
 import 'screens/details/time_windows_screen.dart';
-import 'screens/details/vibe_meter_screen.dart';
 import 'screens/details/color_of_day_screen.dart';
 import 'screens/details/astro_insights_screen.dart';
 import 'screens/kundli/kundli_landing_screen.dart';
@@ -60,7 +59,6 @@ const List<NavGroup> kNavGroups = [
   NavGroup('Daily Insights', [
     NavDest("Today's Signal", Icons.traffic_outlined, TrafficSignalScreen.new),
     NavDest('Auspicious Windows', Icons.timelapse, TimeWindowsScreen.new),
-    NavDest('Vibe Meter', Icons.speed, VibeMeterScreen.new),
     NavDest('Color of the Day', Icons.palette_outlined, ColorOfDayScreen.new),
     NavDest('Astro Insights', Icons.insights, AstroInsightsScreen.new),
     NavDest('Upcoming Transits', Icons.calendar_month, UpcomingTransitsScreen.new),

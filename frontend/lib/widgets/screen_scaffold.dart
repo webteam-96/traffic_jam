@@ -75,6 +75,7 @@ class DetailScaffold extends StatelessWidget {
     this.scrollable = true,
     this.padded = true,
     this.bottomBar,
+    this.onRefresh,
   });
 
   final Widget child;
@@ -84,6 +85,11 @@ class DetailScaffold extends StatelessWidget {
   final bool scrollable;
   final bool padded;
   final Widget? bottomBar;
+
+  /// Pull-to-refresh. Only meaningful with [scrollable]; the scroll physics
+  /// switch to always-scrollable so the gesture works even when the content
+  /// is short enough not to overflow.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -97,12 +103,26 @@ class DetailScaffold extends StatelessWidget {
     }
     if (scrollable) {
       body = SingleChildScrollView(
+        physics: onRefresh == null
+            ? null
+            : const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(
           top: kTopBarHeight + topInset + AppSpacing.lg,
           bottom: AppSpacing.section,
         ),
         child: body,
       );
+      if (onRefresh != null) {
+        body = RefreshIndicator(
+          onRefresh: onRefresh!,
+          color: AppColors.gold,
+          backgroundColor: AppColors.surfaceRaised,
+          // The back bar floats over the body, so the spinner has to drop
+          // below it or it appears behind the title.
+          edgeOffset: kTopBarHeight + topInset,
+          child: body,
+        );
+      }
     } else {
       body = Padding(
         padding: EdgeInsets.only(top: kTopBarHeight + topInset),

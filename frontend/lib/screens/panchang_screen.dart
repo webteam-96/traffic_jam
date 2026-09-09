@@ -23,6 +23,29 @@ const _tithiDayNames = [
   'Ashtami', 'Navami', 'Dashami', 'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi',
 ];
 
+/// Where "now" sits relative to a timed window such as Rahu Kaal.
+enum PeriodState { upcoming, active, passed }
+
+PeriodState periodStateAt(DateTime now, DateTime start, DateTime end) {
+  if (now.isBefore(start)) return PeriodState.upcoming;
+  if (now.isBefore(end)) return PeriodState.active;
+  return PeriodState.passed;
+}
+
+/// "10:42 AM – 12:15 PM". The meridiem is repeated on both ends rather than
+/// shared: a window can straddle noon, and "10:42 – 12:15 PM" reads as if it
+/// started at 10:42 PM.
+String formatClockWindow(DateTime start, DateTime end) {
+  String clock(DateTime t) {
+    final hour12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final minute = t.minute.toString().padLeft(2, '0');
+    final meridiem = t.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$minute $meridiem';
+  }
+
+  return '${clock(start)} – ${clock(end)}';
+}
+
 class _PanchangScreenState extends State<PanchangScreen> {
   Map<String, dynamic>? _panchang;
   bool _loading = true;
@@ -82,6 +105,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
   String _meridiem(String iso) => _parseUtc(iso).hour < 12 ? 'AM' : 'PM';
 
   String _endsAtLabel(String iso) => 'Ends ${_formatTime(iso)} ${_meridiem(iso)}';
+
 
   @override
   Widget build(BuildContext context) {
@@ -161,8 +185,9 @@ class _PanchangScreenState extends State<PanchangScreen> {
   Widget _rahuKaalCard(Map<String, dynamic> rahuKaal) {
     final start = _parseUtc(rahuKaal['start'] as String);
     final end = _parseUtc(rahuKaal['end'] as String);
-    final isActive = _now.isAfter(start) && _now.isBefore(end);
-    final isUpcoming = _now.isBefore(start);
+    final state = periodStateAt(_now, start, end);
+    final isActive = state == PeriodState.active;
+    final isUpcoming = state == PeriodState.upcoming;
 
     final Duration? countdown = isActive
         ? end.difference(_now)
@@ -196,7 +221,7 @@ class _PanchangScreenState extends State<PanchangScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SectionLabel('CURRENT CELESTIAL STATUS'),
+                const SectionLabel("TODAY'S PANCHANG"),
                 const SizedBox(height: AppSpacing.md),
                 Text(
                   'Rahu Kaal\nAlert',
@@ -224,13 +249,57 @@ class _PanchangScreenState extends State<PanchangScreen> {
                     height: 1.6,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xxl),
-                if (countdown != null) _countdownBlock(countdown, isActive),
+                const SizedBox(height: AppSpacing.lg),
+                // The window is shown whatever the state. It used to appear
+                // only as a countdown, so once Rahu Kaal had passed the card
+                // said it was over without ever saying when it had been —
+                // which is the one thing someone checking after the fact
+                // wants to know.
+                _windowRow(start, end, isActive: isActive, isUpcoming: isUpcoming),
+                if (countdown != null) ...[
+                  const SizedBox(height: AppSpacing.xxl),
+                  _countdownBlock(countdown, isActive),
+                ],
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _windowRow(DateTime start, DateTime end,
+      {required bool isActive, required bool isUpcoming}) {
+    final label = isActive
+        ? 'RUNNING'
+        : isUpcoming
+            ? 'STARTS'
+            : 'WAS';
+    return Row(
+      children: [
+        Icon(
+          isUpcoming ? Icons.schedule : Icons.history_toggle_off,
+          size: 16,
+          color: isActive ? AppColors.gold : AppColors.textTan,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Text(label,
+            style: AppText.sans(
+                size: 10,
+                weight: FontWeight.w700,
+                color: AppColors.textMuted,
+                letterSpacing: 0.8)),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            formatClockWindow(start, end),
+            style: AppText.sans(
+                size: 15,
+                weight: FontWeight.w600,
+                color: isActive ? AppColors.gold : AppColors.textCream),
+          ),
+        ),
+      ],
     );
   }
 

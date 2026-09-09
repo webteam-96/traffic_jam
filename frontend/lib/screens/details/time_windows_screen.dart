@@ -297,7 +297,16 @@ class _AvoidRow extends StatelessWidget {
       fillOpacity: 0.5,
       borderColor: AppColors.surfaceRaised3,
       radius: AppRadius.md,
+      // Name, time and note each get their own line.
+      //
+      // The time used to be a third sibling of the outer Row, unconstrained,
+      // so "07:34 AM – 09:07 AM" took whatever width it wanted and squeezed
+      // the text beside it into a ribbon. Sharing a line with the name only
+      // moved the problem: the two together are wider than the card on a
+      // narrow phone, so "Yamaganda" still broke mid-word. Stacking them can't
+      // collide at any width or with any period name.
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           IconChip(child: Icon(icon, size: 18, color: AppColors.criticalText)),
           const SizedBox(width: AppSpacing.md),
@@ -306,16 +315,18 @@ class _AvoidRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: AppText.cardTitle),
+                const SizedBox(height: 2),
+                Text(range,
+                    style: AppText.sans(
+                        size: 14,
+                        weight: FontWeight.w700,
+                        color: AppColors.criticalText)),
                 const SizedBox(height: AppSpacing.xs),
                 Text(note,
                     style: AppText.sans(size: 12, color: AppColors.textTan, height: 1.5)),
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          Text(range,
-              style: AppText.sans(
-                  size: 13, weight: FontWeight.w600, color: AppColors.criticalText)),
         ],
       ),
     );

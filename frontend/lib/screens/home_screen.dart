@@ -4,17 +4,15 @@ import '../theme/app_assets.dart';
 import '../widgets/widgets.dart';
 import '../nav.dart';
 import '../services/panchang_api.dart';
-import '../services/signal_api.dart';
 import '../services/user_api.dart';
 import '../services/chart_api.dart';
-import 'notifications_screen.dart';
 import 'kundli/kundli_landing_screen.dart';
 import 'details/traffic_signal_screen.dart';
-import 'details/vibe_meter_screen.dart';
+import 'details/time_windows_screen.dart';
 import 'profile/book_appointment_screen.dart';
 
 /// Home dashboard — Figma node 1:711.
-/// Astro Identity · Today's Panchang · Action hub (2x2) · Celestial Vibe
+/// Astro Identity · Today's Panchang · Action hub (2x2) · Private Cosmic
 /// Meter · Private Cosmic Reading. Cosmic Foundations moved to its own page,
 /// reachable from the top-bar button (see AppTopBar/AppShell).
 class HomeScreen extends StatefulWidget {
@@ -60,11 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: AppSpacing.section),
             _ActionHub(onOpenTab: widget.onOpenTab),
-            const SizedBox(height: AppSpacing.xl),
-            GlassCardTapWrapper(
-              onTap: () => pushScreen(context, VibeMeterScreen.new),
-              child: const _VibeMeterCard(),
-            ),
             const SizedBox(height: AppSpacing.xl),
             const _CosmicReadingCard(),
           ],
@@ -212,18 +205,29 @@ class GlassCardTapWrapper extends StatelessWidget {
 
 // ── Action hub 2x2 ────────────────────────────────────────────────────────────
 class _ActionItem {
-  const _ActionItem(this.icon, this.label, this.w, this.h);
-  final String icon;
+  const _ActionItem(this.icon, this.label);
+
+  /// A widget rather than an IconData: Kundli's is a drawn North Indian chart,
+  /// which no icon font has.
+  final Widget icon;
   final String label;
-  final double w;
-  final double h;
 }
 
+/// Material icons rather than the Figma SVGs these tiles used to carry: the
+/// old set didn't depict its labels — a broom for "Today's Signal", and the
+/// same calendar for both Panchang and Auspicious Windows. These match the
+/// icons the nav menu already uses for the identical destinations, so the two
+/// routes to each screen look like the same thing.
 const _actions = [
-  _ActionItem(Assets.iconKundli, 'Kundli', 22, 18.5),
-  _ActionItem(Assets.iconPanchangAction, 'Panchang', 18, 20),
-  _ActionItem(Assets.iconNotifications, 'Notifications', 20, 20),
-  _ActionItem(Assets.iconCleanupTransits, 'Cleanup Major Transits', 18, 22),
+  // The North Indian chart's own outline — the shape the app draws a Kundli
+  // in, and what anyone who reads one recognises at a glance.
+  _ActionItem(NorthChartGlyph(size: 21, color: AppColors.gold), 'Kundli'),
+  // A daily almanac — a calendar with something written on the day.
+  _ActionItem(Icon(Icons.event_note_outlined, size: 21, color: AppColors.gold), 'Panchang'),
+  // Windows of time to act in or avoid.
+  _ActionItem(Icon(Icons.timelapse, size: 21, color: AppColors.gold), 'Auspicious Windows'),
+  // Literally a traffic light, which is what the score is drawn as.
+  _ActionItem(Icon(Icons.traffic_outlined, size: 21, color: AppColors.gold), "Today's Signal"),
 ];
 
 class _ActionHub extends StatelessWidget {
@@ -237,8 +241,11 @@ class _ActionHub extends StatelessWidget {
       case 1:
         onOpenTab?.call(1); // Panchang tab
       case 2:
-        pushScreen(context, NotificationsScreen.new);
+        pushScreen(context, TimeWindowsScreen.new);
       case 3:
+        // Opens the Traffic Signal screen, which is what this tile has always
+        // done — it was labelled "Cleanup Major Transits", which named neither
+        // the screen nor anything the app does.
         pushScreen(context, TrafficSignalScreen.new);
     }
   }
@@ -253,10 +260,7 @@ class _ActionHub extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconChip(
-              size: 40,
-              child: SvgIcon(a.icon, width: a.w, height: a.h, color: AppColors.gold),
-            ),
+            IconChip(size: 40, child: a.icon),
             const SizedBox(height: AppSpacing.md),
             Text(a.label, style: AppText.cardTitle),
           ],
@@ -264,31 +268,26 @@ class _ActionHub extends StatelessWidget {
       );
     }
 
-    return Column(
-      children: [
+    final rows = <Widget>[];
+    for (var i = 0; i < _actions.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: AppSpacing.lg));
+      rows.add(
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: cell(0)),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(child: cell(1)),
+              Expanded(child: cell(i)),
+              if (i + 1 < _actions.length) ...[
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(child: cell(i + 1)),
+              ],
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.lg),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: cell(2)),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(child: cell(3)),
-            ],
-          ),
-        ),
-      ],
-    );
+      );
+    }
+
+    return Column(children: rows);
   }
 }
 
@@ -348,6 +347,15 @@ class _TodaysPanchangCardState extends State<_TodaysPanchangCard> {
         : (panchang['nakshatra'] as Map<String, dynamic>)['name'] as String;
     final paksha = panchang == null ? '' : panchang['paksha'] as String;
 
+    // The Hindu lunar month, shown beside the Gregorian date. Purnimanta is
+    // the reckoning used across the Hindi-speaking north — the API returns the
+    // Amanta name too, for a southern reading, but showing both here would say
+    // two different months on the same card for half of every lunation.
+    final lunarMonth = panchang?['lunarMonth'] as Map<String, dynamic>?;
+    final lunarMonthLabel = lunarMonth == null
+        ? null
+        : '${lunarMonth['purnimanta']} · ${lunarMonth['purnimantaHindi']}';
+
     return GlassCard(
       goldTopBorder: true,
       child: Column(
@@ -363,6 +371,20 @@ class _TodaysPanchangCardState extends State<_TodaysPanchangCard> {
                     const SectionLabel("TODAY'S PANCHANG"),
                     const SizedBox(height: AppSpacing.xs),
                     Text(dateLabel, style: AppText.displayLg),
+                    if (lunarMonthLabel != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        lunarMonthLabel,
+                        // Devanagari has no glyphs in the app's own typefaces,
+                        // so this leans on the platform's font fallback rather
+                        // than AppText.sans — same as the chart legend.
+                        style: const TextStyle(
+                            fontSize: 18,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.amber),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -378,73 +400,6 @@ class _TodaysPanchangCardState extends State<_TodaysPanchangCard> {
               Expanded(child: col('NAKSHATRA', [nakshatraName])),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Celestial Vibe Meter ──────────────────────────────────────────────────────
-// Preview of the same real factors shown in full on VibeMeterScreen (moon
-// transit / Panchang / Dasha — from the Traffic Signal breakdown).
-class _VibeMeterCard extends StatefulWidget {
-  const _VibeMeterCard();
-
-  @override
-  State<_VibeMeterCard> createState() => _VibeMeterCardState();
-}
-
-class _VibeMeterCardState extends State<_VibeMeterCard> {
-  Map<String, dynamic>? _breakdown;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    SignalApi.getToday().then((signal) {
-      if (!mounted) return;
-      setState(() {
-        _breakdown = signal['breakdown'] as Map<String, dynamic>;
-        _loading = false;
-      });
-    }).catchError((_) {
-      if (mounted) setState(() => _loading = false);
-    });
-  }
-
-  double _score(String key) =>
-      ((_breakdown?[key] as Map<String, dynamic>?)?['score'] as int? ?? 0) / 100.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionLabel('CELESTIAL VIBE METER'),
-          const SizedBox(height: AppSpacing.xl),
-          if (_loading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(AppColors.gold)),
-                ),
-              ),
-            )
-          else if (_breakdown == null)
-            Text('Save your birth data to see your vibe meter.',
-                style: AppText.sans(size: 13, color: AppColors.textMuted))
-          else ...[
-            MeterBar(label: 'Moon Transit', value: _score('moonTransit')),
-            const SizedBox(height: AppSpacing.lg),
-            MeterBar(label: 'Panchang', value: _score('panchang')),
-            const SizedBox(height: AppSpacing.lg),
-            MeterBar(label: 'Dasha', value: _score('dasha')),
-          ],
         ],
       ),
     );

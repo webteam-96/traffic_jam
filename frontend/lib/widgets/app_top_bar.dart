@@ -7,14 +7,12 @@ import 'app_widgets.dart';
 const double kTopBarHeight = 56;
 
 /// Frosted top app bar shown on the five main tabs:
-/// hamburger • Traffic Jam logo+wordmark • Cosmic Foundations • bell • avatar.
+/// hamburger • Traffic Jam logo+wordmark • bell.
 class AppTopBar extends StatelessWidget {
-  const AppTopBar({super.key, this.onMenu, this.onFoundations, this.onBell, this.onAvatar});
+  const AppTopBar({super.key, this.onMenu, this.onBell});
 
   final VoidCallback? onMenu;
-  final VoidCallback? onFoundations;
   final VoidCallback? onBell;
-  final VoidCallback? onAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -31,54 +29,39 @@ class AppTopBar extends StatelessWidget {
               bottom: BorderSide(color: AppColors.goldBorderSoft),
             ),
           ),
-          child: Row(
+          // A Stack, not a Row: the title is centred against the BAR, not
+          // against the space left between the icons. In a Row it would drift
+          // whenever the trailing icons changed width — and the About Jay
+          // avatar is a different width depending on whether a photo has been
+          // uploaded, which would visibly shift the title.
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              GestureDetector(
-                onTap: onMenu,
-                behavior: HitTestBehavior.opaque,
-                child: const SvgIcon(Assets.iconMenu,
-                    width: 18, height: 12, color: AppColors.textPrimary),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(figmaAsset(Assets.logo), width: 28, height: 28),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('TrafficJam.Life',
+                      style: AppText.logoFont(size: 24, letterSpacing: 0.4)),
+                ],
               ),
-              const SizedBox(width: AppSpacing.lg),
-              Image.asset(figmaAsset(Assets.logo), width: 24, height: 24),
-              const SizedBox(width: AppSpacing.sm),
-              Text('TrafficJam.Life',
-                  style: AppText.logoFont(size: 18, letterSpacing: 0.4)),
-              const Spacer(),
-              GestureDetector(
-                onTap: onFoundations,
-                behavior: HitTestBehavior.opaque,
-                child: const SvgIcon(Assets.iconZodiac,
-                    width: 18, height: 18, color: AppColors.textPrimary),
-              ),
-              const SizedBox(width: AppSpacing.xxl),
-              GestureDetector(
-                onTap: onBell,
-                behavior: HitTestBehavior.opaque,
-                child: const SvgIcon(Assets.iconBell,
-                    width: 13.3, height: 16.7, color: AppColors.textPrimary),
-              ),
-              const SizedBox(width: AppSpacing.xxl),
-              GestureDetector(
-                onTap: onAvatar,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    border: Border.all(
-                        color: AppColors.textTan.withValues(alpha: 0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.2),
-                        blurRadius: 0,
-                        spreadRadius: 2,
-                      )
-                    ],
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: onMenu,
+                    behavior: HitTestBehavior.opaque,
+                    child: const SvgIcon(Assets.iconMenu,
+                        width: 18, height: 12, color: AppColors.textPrimary),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Image.asset(figmaAsset(Assets.avatar), fit: BoxFit.cover),
-                ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: onBell,
+                    behavior: HitTestBehavior.opaque,
+                    child: const SvgIcon(Assets.iconBell,
+                        width: 13.3, height: 16.7, color: AppColors.textPrimary),
+                  ),
+                ],
               ),
             ],
           ),
