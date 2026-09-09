@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'details/time_windows_screen.dart';
+import 'details/traffic_signal_screen.dart';
 import 'package:traffic_jam/theme/app_theme.dart';
 import 'package:traffic_jam/widgets/widgets.dart';
 import 'package:traffic_jam/services/notification_api.dart';
 import 'package:traffic_jam/nav.dart';
 
 /// Notifications inbox (pushed screen). Frosted alert rows with a tinted
-/// leading glyph, title, body and relative time. Tap a row to mark it read;
-/// the app-bar action clears all. Wired to GET /notifications,
+/// leading glyph, title, body and relative time. Tapping a row marks it read
+/// and opens whatever it is about; the app-bar action clears all. Wired to
+/// GET /notifications,
 /// POST /notifications/{id}/read, POST /notifications/read-all.
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -18,23 +21,21 @@ class NotificationsScreen extends StatefulWidget {
 /// Icon + tint per backend `type` — the backend only sends a free-form type
 /// string, not display metadata, so this is the presentation-layer mapping.
 /// Falls back to a generic bell for any type not listed here.
-const Map<String, (IconData, Color)> _typeStyle = {
-  'morning_briefing': (Icons.trending_up_rounded, AppColors.success),
-  'rahu_kaal': (Icons.warning_amber_rounded, AppColors.criticalText),
-  'transit': (Icons.auto_awesome_rounded, AppColors.gold),
-  'planetary_event': (Icons.auto_awesome_rounded, AppColors.gold),
-  'dasha': (Icons.timeline, AppColors.gold),
-  'remedy': (Icons.spa_rounded, AppColors.gold),
-  'announcement': (Icons.celebration_outlined, AppColors.amber),
-  'forecast': (Icons.calendar_month_rounded, AppColors.amber),
+/// Keyed on the category prefix of the backend's `type`, which is a dedupe
+/// key rather than a label — "rahukaal:2026-09-09", `chat:<message id>`.
+const Map<String, (IconData, Color, String)> _categoryStyle = {
+  'morning': (Icons.trending_up_rounded, AppColors.success, 'Morning briefing'),
+  'rahukaal': (Icons.warning_amber_rounded, AppColors.criticalText, 'Rahu Kaal'),
+  'dasha': (Icons.timeline, AppColors.gold, 'Dasha'),
+  'chat': (Icons.chat_bubble_outline, AppColors.amber, "Jay's reply"),
+  'event': (Icons.auto_awesome_rounded, AppColors.gold, 'Planetary event'),
+  'remedy': (Icons.spa_rounded, AppColors.gold, 'Remedy'),
 };
-const _defaultTypeStyle = (Icons.notifications_none_rounded, AppColors.gold);
+const _defaultCategoryStyle =
+    (Icons.notifications_none_rounded, AppColors.gold, 'Alert');
 
-String _humanizeType(String type) => type
-    .split('_')
-    .where((w) => w.isNotEmpty)
-    .map((w) => w[0].toUpperCase() + w.substring(1))
-    .join(' ');
+(IconData, Color, String) _styleFor(String type) =>
+    _categoryStyle[type.split(':').first] ?? _defaultCategoryStyle;
 
 String _relativeTime(String iso) {
   final raw = DateTime.tryParse(iso);
@@ -60,7 +61,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifs = [];
   bool _loading = true;
   bool _errored = false;
-  int _filter = 0; // 0 = All, 1 = System, 2 = Team
 
   @override
   void initState() {
@@ -87,6 +87,46 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _refresh() => _load();
+
+  /// Marks the notification read and opens whatever it is about.
+  ///
+  /// The destination comes from the category prefix of the backend's `type`,
+  /// which is a dedupe key of the form "category:...". A chat notification
+  /// carries its question id there too, so it can open that conversation
+  /// rather than the list.
+  Future<void> _open(int index) async {
+    final notif = _notifs[index];
+    if (notif['read'] != true) {
+      await _markRead(index);
+    }
+
+    if (!mounted) return;
+
+    final type = notif['type'] as String? ?? '';
+    final parts = type.split(':');
+
+    switch (parts.first) {
+      case 'morning':
+        pushScreen(context, TrafficSignalScreen.new);
+      case 'rahukaal':
+        pushScreen(context, TimeWindowsScreen.new);
+      case 'dasha':
+        goToDashaTimeline(context);
+      case 'chat':
+        // "chat:<questionId>:<messageId>". An older notification written
+        // before the question id was in the key falls back to the list rather
+        // than opening a thread that can't be identified.
+        if (parts.length >= 3) {
+          goToChat(context, questionId: parts[1]);
+        } else {
+          goToMyQuestions(context);
+        }
+      default:
+        // Nothing specific to open — the notification's own text is the whole
+        // of it, so staying put is the honest response.
+        break;
+    }
+  }
 
   Future<void> _markRead(int index) async {
     final id = _notifs[index]['id'] as String;
@@ -135,13 +175,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
-    final indices = [
-      for (var i = 0; i < _notifs.length; i++)
-        if (_filter == 0 ||
-            (_filter == 1 && _notifs[i]['source'] == 'system') ||
-            (_filter == 2 && _notifs[i]['source'] == 'team'))
-          i,
-    ];
+    final indices = [for (var i = 0; i < _notifs.length; i++) i];
     final unread = _notifs.where((n) => n['read'] != true).length;
 
     return DetailScaffold(
@@ -170,19 +204,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             style: AppText.bodySmall,
           ),
           const SizedBox(height: AppSpacing.xl),
-          PillToggle(
-            options: const ['All', 'System', 'Team'],
-            selectedIndex: _filter,
-            onChanged: (i) => setState(() => _filter = i),
-          ),
-          const SizedBox(height: AppSpacing.xl),
           if (indices.isEmpty)
             _EmptyState(hasAny: _notifs.isNotEmpty)
           else
             for (final i in indices) ...[
               _NotifRow(
                 notif: _notifs[i],
-                onTap: _notifs[i]['read'] == true ? null : () => _markRead(i),
+                // Always tappable now: an already-read notification still has
+                // somewhere to go, and a row that stops responding once read
+                // reads as broken.
+                onTap: () => _open(i),
               ),
               const SizedBox(height: AppSpacing.md),
             ],
@@ -201,8 +232,7 @@ class _NotifRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final read = notif['read'] == true;
     final type = notif['type'] as String? ?? '';
-    final (icon, tint) = _typeStyle[type] ?? _defaultTypeStyle;
-    final source = notif['source'] == 'team' ? _Source.team : _Source.system;
+    final (icon, tint, categoryLabel) = _styleFor(type);
 
     return GlassCard(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -258,52 +288,15 @@ class _NotifRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    _SourceTag(source: source),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        '${_humanizeType(type).toUpperCase()}  ·  '
-                        '${_relativeTime(notif['at'] as String? ?? '')}',
-                        style: AppText.microLabel.copyWith(color: AppColors.textTan),
-                      ),
-                    ),
-                  ],
+                Text(
+                  '${categoryLabel.toUpperCase()}  ·  '
+                  '${_relativeTime(notif['at'] as String? ?? '')}',
+                  style: AppText.microLabel.copyWith(color: AppColors.textTan),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-enum _Source { system, team }
-
-/// Small tag distinguishing an app-generated alert from a team announcement.
-class _SourceTag extends StatelessWidget {
-  const _SourceTag({required this.source});
-  final _Source source;
-
-  @override
-  Widget build(BuildContext context) {
-    final isTeam = source == _Source.team;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: (isTeam ? AppColors.gold : AppColors.textMuted).withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Text(
-        isTeam ? 'TEAM' : 'SYSTEM',
-        style: AppText.sans(
-          size: 8,
-          weight: FontWeight.w700,
-          color: isTeam ? AppColors.gold : AppColors.textMuted,
-          letterSpacing: 0.6,
-        ),
       ),
     );
   }
