@@ -17,12 +17,38 @@ public static class ChartEndpoints
 {
     public static void MapChartEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/chart", async (System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/chart", async (
+            System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
+            IAstroEngineService astroEngine, IDashaService dashaService, IKpService kpService,
+            CancellationToken ct) =>
         {
-            var chart = await db.Charts.SingleOrDefaultAsync(c => c.UserId == principal.UserId(), ct);
+            var userId = principal.UserId();
+            var chart = await db.Charts.SingleOrDefaultAsync(c => c.UserId == userId, ct);
             if (chart is null)
             {
                 return Results.NotFound(new { error = new { code = "NO_CHART", message = "Save birth data first." } });
+            }
+
+            // A chart is computed once and kept, so without this every engine
+            // improvement would only ever reach people who saved their birth
+            // data afterwards. Anyone older would silently keep the old
+            // astrology — which is exactly what happened to the KP ayanamsa
+            // fix and to Uranus/Neptune/Pluto.
+            if (chart.EngineVersion < AstroEngineVersion.Current)
+            {
+                var birthData = await db.BirthData.SingleOrDefaultAsync(b => b.UserId == userId, ct);
+                if (birthData is not null)
+                {
+                    await Modules.Users.UserEndpoints.RegenerateChartAndDashaAsync(
+                        db, userId, birthData.Dob, birthData.Tob, birthData.UnknownTime,
+                        birthData.Lat, birthData.Lng, birthData.Timezone,
+                        astroEngine, dashaService, kpService, ct);
+                    await db.SaveChangesAsync(ct);
+
+                    // Re-read: the recompute rewrote the row this handler is
+                    // about to serialise.
+                    chart = await db.Charts.SingleAsync(c => c.UserId == userId, ct);
+                }
             }
 
             var d1 = JsonSerializer.Deserialize<JsonElement>(chart.D1Json);
@@ -46,6 +72,11 @@ public static class ChartEndpoints
                 moonChart = JsonSerializer.Deserialize<JsonElement>(chart.MoonJson),
                 kp = JsonSerializer.Deserialize<JsonElement>(chart.KpJson),
                 cusps = JsonSerializer.Deserialize<JsonElement>(chart.CuspJson),
+                // Derived on read rather than stored. Significators are pure
+                // arithmetic over the KP planets and cusps already in the row,
+                // so recomputing costs nothing and every chart saved before
+                // this existed gets them without a migration or a backfill.
+                kpSignificators = SignificatorsFor(chart.KpJson, chart.CuspJson),
             };
             return Results.Ok(response);
         }).RequireAuthorization();
@@ -90,11 +121,13 @@ public static class ChartEndpoints
 
             object kpJson = Array.Empty<object>();
             object cuspJson = Array.Empty<object>();
+            object kpSignificatorJson = Array.Empty<object>();
             if (timeKnown)
             {
                 var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), request.Lat, request.Lng);
                 kpJson = kpChart.Planets;
                 cuspJson = kpChart.Cusps;
+                kpSignificatorJson = kpChart.Significators;
             }
 
             var chartResponse = new
@@ -120,6 +153,7 @@ public static class ChartEndpoints
                 moonChart = result.MoonChart,
                 kp = kpJson,
                 cusps = cuspJson,
+                kpSignificators = kpSignificatorJson,
             };
 
             var moonPosition = result.D1.Single(p => p.Planet == "Moon");
@@ -178,5 +212,22 @@ public static class ChartEndpoints
             end = p.End,
             current = nowUtc >= p.Start && nowUtc < p.End,
         });
+    }
+
+    /// <summary>
+    /// Rebuilds the KP significator table from a stored chart's KP planets and
+    /// cusps. Returns an empty list when the chart has no KP data at all —
+    /// birth time unknown, so there are no Placidus cusps to read.
+    /// </summary>
+    private static IReadOnlyList<KpSignificatorInfo> SignificatorsFor(string kpJson, string cuspJson)
+    {
+        var planets = JsonSerializer.Deserialize<List<KpPlanetInfo>>(kpJson, JsonConventions.CamelCase);
+        var cusps = JsonSerializer.Deserialize<List<KpCuspInfo>>(cuspJson, JsonConventions.CamelCase);
+        if (planets is null or { Count: 0 } || cusps is null or { Count: 0 })
+        {
+            return [];
+        }
+
+        return KpSignificatorCalculator.Compute(planets, cusps);
     }
 }

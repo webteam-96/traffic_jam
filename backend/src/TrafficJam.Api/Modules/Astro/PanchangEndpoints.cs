@@ -10,6 +10,10 @@ public record PanchangElement(string Name, DateTime EndsAt);
 
 public record PanchangResponse(
     DateOnly Date, string Paksha,
+    // Hindu lunar month, both reckonings. Derived on read rather than stored:
+    // it follows from the cached date and paksha alone, so every row cached
+    // before this existed gets it without a migration or a backfill.
+    HinduLunarMonthInfo LunarMonth,
     PanchangElement Tithi, PanchangElement Nakshatra, PanchangElement Yoga, PanchangElement Karana,
     PanchangWindow RahuKaal, PanchangWindow Yamaganda, PanchangWindow Gulika, PanchangWindow Abhijit,
     // Abhijit trimmed against Rahu Kaal/Yamaganda/Gulika — both null means
@@ -37,7 +41,8 @@ public static class PanchangEndpoints
     {
         app.MapGet("/panchang/today", async (
             DateOnly? date, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
-            IPanchangService panchangService, CancellationToken ct) =>
+            IPanchangService panchangService, IAyanamsaService ayanamsa,
+            CancellationToken ct) =>
         {
             var birthData = await db.BirthData.SingleOrDefaultAsync(b => b.UserId == principal.UserId(), ct);
             if (birthData is null)
@@ -103,6 +108,8 @@ public static class PanchangEndpoints
 
             return Results.Ok(new PanchangResponse(
                 targetDate, cached.Paksha,
+                HinduLunarMonthCalculator.Compute(
+                    new CosineKitty.AstroTime(cached.Sunrise), ayanamsa, cached.Paksha),
                 new PanchangElement(cached.Tithi, cached.TithiEndsAt),
                 new PanchangElement(cached.Nakshatra, cached.NakshatraEndsAt),
                 new PanchangElement(cached.Yoga, cached.YogaEndsAt),

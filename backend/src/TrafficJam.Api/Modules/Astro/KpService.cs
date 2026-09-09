@@ -6,7 +6,10 @@ public record KpPlanetInfo(
     string Planet, int SignIndex, string Sign, double DegreeInSign,
     KpLordship Lordship, int House, bool Retrograde);
 public record KpCuspInfo(int House, int SignIndex, string Sign, double DegreeInSign, KpLordship Lordship, IReadOnlyList<string> Planets);
-public record KpChartResult(IReadOnlyList<KpPlanetInfo> Planets, IReadOnlyList<KpCuspInfo> Cusps);
+public record KpChartResult(
+    IReadOnlyList<KpPlanetInfo> Planets,
+    IReadOnlyList<KpCuspInfo> Cusps,
+    IReadOnlyList<KpSignificatorInfo> Significators);
 
 public interface IKpService
 {
@@ -85,7 +88,8 @@ public class KpService(IPlacidusHouseCalculator placidus, IAyanamsaService ayana
                 KpLordshipCalculator.Compute(siderealCusps[i]), planetsHere));
         }
 
-        return new KpChartResult(planets, cusps);
+        return new KpChartResult(
+            planets, cusps, KpSignificatorCalculator.Compute(planets, cusps));
     }
 
     /// <summary>

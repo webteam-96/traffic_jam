@@ -4,6 +4,9 @@ namespace TrafficJam.Api.Modules.Astro;
 
 public record PanchangResult(
     string Paksha,
+    // The Hindu lunar month, in both reckonings — see
+    // HinduLunarMonthCalculator for why one name isn't enough.
+    HinduLunarMonthInfo LunarMonth,
     string TithiName, int TithiIndex, DateTime TithiEndsAt,
     string NakshatraName, DateTime NakshatraEndsAt,
     string YogaName, int YogaIndex, DateTime YogaEndsAt,
@@ -90,8 +93,11 @@ public class PanchangService(IAyanamsaService ayanamsa) : IPanchangService
         var yogaEndsAt = FindSegmentEnd(sunrise, YogaAngle, 360.0 / 27.0);
         var karanaEndsAt = FindSegmentEnd(sunrise, TithiAngle, 6.0);
 
+        var paksha = tithiIndex < 15 ? "Shukla" : "Krishna";
+
         return new PanchangResult(
-            Paksha: tithiIndex < 15 ? "Shukla" : "Krishna",
+            Paksha: paksha,
+            LunarMonth: HinduLunarMonthCalculator.Compute(sunrise, ayanamsa, paksha),
             TithiName: PanchangNames.TithiNames[tithiIndex], TithiIndex: tithiIndex, TithiEndsAt: tithiEndsAt,
             NakshatraName: VedicMath.NakshatraNames[nakshatraIndex], NakshatraEndsAt: nakshatraEndsAt,
             YogaName: PanchangNames.YogaNames[yogaIndex], YogaIndex: yogaIndex, YogaEndsAt: yogaEndsAt,

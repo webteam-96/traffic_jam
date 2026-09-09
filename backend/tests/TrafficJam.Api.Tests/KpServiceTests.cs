@@ -128,4 +128,210 @@ public class KpServiceTests
             Assert.Contains(lordship.SubSubLord, VimshottariConstants.Lords);
         }
     }
+
+    // ── KP significators ─────────────────────────────────────────────────
+    //
+    // KP reads a planet as the agent of the star it sits in, so the four
+    // levels are not interchangeable — getting the order or the "owns"
+    // derivation wrong changes which house a planet is taken to speak for,
+    // which is the whole basis of a KP judgement.
+
+    // Every body the KP table lists gets a row except the Ascendant, which is
+    // a point rather than a graha — nine grahas plus the three outer planets.
+    [Fact]
+    public void Significators_HaveOneRowPerBody_AndNoneForTheAscendant()
+    {
+        var kp = Compute();
+
+        Assert.Equal(12, kp.Significators.Count);
+        Assert.DoesNotContain(kp.Significators, s => s.Planet == "Ascendant");
+        Assert.Contains(kp.Significators, s => s.Planet == "Uranus");
+        Assert.Contains(kp.Significators, s => s.Planet == "Neptune");
+        Assert.Contains(kp.Significators, s => s.Planet == "Pluto");
+    }
+
+    [Fact]
+    public void Significators_OccupiedHouse_MatchesThePlanetsOwnHouse()
+    {
+        var kp = Compute();
+
+        foreach (var sig in kp.Significators)
+        {
+            var planet = kp.Planets.Single(p => p.Planet == sig.Planet);
+            Assert.Equal(new[] { planet.House }, sig.Occupies);
+        }
+    }
+
+    // A planet owns the houses whose CUSP falls in a sign it rules. In
+    // Placidus that is not one house per sign: houses are unequal, so a sign
+    // can hold two cusps or none, and a whole-sign assumption would quietly
+    // hand planets the wrong houses.
+    [Fact]
+    public void Significators_OwnedHouses_AreTheCuspsInSignsThatPlanetRules()
+    {
+        var kp = Compute();
+
+        foreach (var sig in kp.Significators)
+        {
+            var expected = kp.Cusps
+                .Where(c => KpLordshipCalculator.RulerOfSign[c.SignIndex] == sig.Planet)
+                .Select(c => c.House)
+                .Order()
+                .ToList();
+
+            Assert.Equal(expected, sig.Owns);
+        }
+    }
+
+    [Fact]
+    public void Significators_StarLordLevels_AreThatStarLordsOwnHousesNotThePlanets()
+    {
+        var kp = Compute();
+
+        foreach (var sig in kp.Significators)
+        {
+            var starLord = kp.Planets.Single(p => p.Planet == sig.Planet).Lordship.StarLord;
+            var starLordPlanet = kp.Planets.Single(p => p.Planet == starLord);
+
+            Assert.Equal(new[] { starLordPlanet.House }, sig.StarLordOccupies);
+
+            var expectedOwns = kp.Cusps
+                .Where(c => KpLordshipCalculator.RulerOfSign[c.SignIndex] == starLord)
+                .Select(c => c.House)
+                .Order()
+                .ToList();
+            Assert.Equal(expectedOwns, sig.StarLordOwns);
+        }
+    }
+
+    // Rahu, Ketu and the three outer planets rule no sign, so they own
+    // nothing. Pinned deliberately for the nodes: some KP schools substitute
+    // their dispositor or a conjoined planet, and if that is ever adopted this
+    // test is the thing that should fail first. See TASKLIST.md.
+    [Theory]
+    [InlineData("Rahu")]
+    [InlineData("Ketu")]
+    [InlineData("Uranus")]
+    [InlineData("Neptune")]
+    [InlineData("Pluto")]
+    public void Significators_BodiesWithNoRulership_OwnNoHouses(string planet)
+    {
+        var kp = Compute();
+
+        Assert.Empty(kp.Significators.Single(s => s.Planet == planet).Owns);
+    }
+
+    // The other three levels ARE computable for an outer planet: it sits in a
+    // nakshatra so it has a star lord, and it occupies a house. Only "owns" is
+    // empty — so the row is real, not a placeholder.
+    [Theory]
+    [InlineData("Uranus")]
+    [InlineData("Neptune")]
+    [InlineData("Pluto")]
+    public void Significators_OuterPlanets_StillCarryTheOtherThreeLevels(string planet)
+    {
+        var kp = Compute();
+
+        var sig = kp.Significators.Single(s => s.Planet == planet);
+
+        Assert.NotEmpty(sig.StarLordOccupies);
+        Assert.Single(sig.Occupies);
+        Assert.All(sig.Occupies, h => Assert.InRange(h, 1, 12));
+    }
+
+    [Fact]
+    public void Significators_EveryHouseNumber_IsInRangeAndUnique()
+    {
+        var kp = Compute();
+
+        foreach (var sig in kp.Significators)
+        {
+            foreach (var level in new[] { sig.StarLordOccupies, sig.StarLordOwns, sig.Occupies, sig.Owns })
+            {
+                Assert.All(level, h => Assert.InRange(h, 1, 12));
+                Assert.Equal(level.Distinct().Count(), level.Count);
+                Assert.Equal(level.Order().ToList(), level);
+            }
+        }
+    }
+
+    // ── Uranus, Neptune, Pluto ───────────────────────────────────────────
+    //
+    // The outer planets appear in the KP table and nowhere else. They are the
+    // only bodies here that classical Vedic astrology has no rules for, so the
+    // things worth pinning are that they are present, that their houses are
+    // read off the real Placidus cusps rather than assumed whole-sign, and
+    // that their positions match an independent ephemeris.
+
+    [Fact]
+    public void Compute_IncludesTheThreeOuterPlanets()
+    {
+        var kp = Compute();
+
+        Assert.Contains(kp.Planets, p => p.Planet == "Uranus");
+        Assert.Contains(kp.Planets, p => p.Planet == "Neptune");
+        Assert.Contains(kp.Planets, p => p.Planet == "Pluto");
+    }
+
+    // Houses come from HouseFromCusps, so each outer planet's longitude must
+    // genuinely fall inside the span its house claims. A whole-sign shortcut
+    // would pass on most charts and quietly fail near a cusp, which is exactly
+    // where it matters.
+    [Fact]
+    public void Compute_OuterPlanetHouses_LieInsideTheirOwnPlacidusSpan()
+    {
+        var kp = Compute();
+        var cusps = kp.Cusps.ToDictionary(c => c.House, c => c.SignIndex * 30.0 + c.DegreeInSign);
+
+        foreach (var planet in kp.Planets.Where(p =>
+                     p.Planet is "Uranus" or "Neptune" or "Pluto"))
+        {
+            var longitude = planet.SignIndex * 30.0 + planet.DegreeInSign;
+            var start = cusps[planet.House];
+            var end = cusps[planet.House % 12 + 1];
+
+            var span = VedicMath.Normalize(end - start);
+            var offset = VedicMath.Normalize(longitude - start);
+
+            Assert.True(offset < span,
+                $"{planet.Planet} at {longitude:F3}° is outside house {planet.House} " +
+                $"({start:F3}°..{end:F3}°)");
+        }
+    }
+
+    // Sidereal positions for 24 Oct 1988 04:42 UTC on the KP ayanamsa. Checked
+    // by converting back the way a reader can audit them: add the ~23.59°
+    // Krishnamurti ayanamsa for late 1988 and the tropical positions come out
+    // as Uranus 28°01' Sagittarius, Neptune 7°45' Capricorn, Pluto 12°02'
+    // Scorpio — which is where each of them stood that week. The 0.3°
+    // tolerance is far tighter than a sign or a house boundary while leaving
+    // room for ayanamsa variants.
+    [Theory]
+    [InlineData("Uranus", 8, 4.428)]    // sidereal Sagittarius
+    [InlineData("Neptune", 8, 14.156)]  // sidereal Sagittarius
+    [InlineData("Pluto", 6, 18.442)]    // sidereal Libra
+    public void Compute_OuterPlanetPositions_MatchAnIndependentEphemeris(
+        string planet, int expectedSignIndex, double expectedDegreeInSign)
+    {
+        var kp = Compute();
+
+        var actual = kp.Planets.Single(p => p.Planet == planet);
+
+        Assert.Equal(expectedSignIndex, actual.SignIndex);
+        Assert.InRange(actual.DegreeInSign, expectedDegreeInSign - 0.3, expectedDegreeInSign + 0.3);
+    }
+
+    // All three outer planets station direct in the autumn and were direct by
+    // late October 1988. Getting a retrograde flag backwards is invisible in a
+    // position but changes how the row reads, so it is pinned separately.
+    [Theory]
+    [InlineData("Uranus")]
+    [InlineData("Neptune")]
+    [InlineData("Pluto")]
+    public void Compute_OuterPlanets_WereAllDirectInLateOctober1988(string planet)
+    {
+        var kp = Compute();
+
+        Assert.False(kp.Planets.Single(p => p.Planet == planet).Retrograde);
+    }
 }

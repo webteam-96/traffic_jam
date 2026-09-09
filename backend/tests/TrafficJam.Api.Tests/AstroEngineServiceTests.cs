@@ -5,21 +5,30 @@ namespace TrafficJam.Api.Tests;
 
 public class AstroEngineServiceTests
 {
+    private static readonly string[] NineGrahas =
+        ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"];
+
+    private static readonly string[] OuterPlanets = ["Uranus", "Neptune", "Pluto"];
+
     private static AstroEngineService BuildService() =>
         new(new LahiriAyanamsaService(), new AscendantCalculator());
 
     [Fact]
-    public void ComputeBirthChart_TimeKnown_ReturnsAllNinePlanetsWithHousesAndAscendant()
+    public void ComputeBirthChart_TimeKnown_ReturnsEveryBodyWithHousesAndAscendant()
     {
         var service = BuildService();
 
         var chart = service.ComputeBirthChart(
             new DateTime(1988, 10, 24, 4, 42, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: true);
 
-        Assert.Equal(9, chart.D1.Count);
-        Assert.Contains(chart.D1, p => p.Planet == "Sun");
-        Assert.Contains(chart.D1, p => p.Planet == "Rahu");
-        Assert.Contains(chart.D1, p => p.Planet == "Ketu");
+        // The nine grahas are what every classical rule is defined over, so
+        // they are asserted by name rather than by a count that would still
+        // pass if one were swapped for another.
+        Assert.All(NineGrahas, graha => Assert.Contains(chart.D1, p => p.Planet == graha));
+        // And the three outer planets, which ride along for the divisional
+        // charts only.
+        Assert.All(OuterPlanets, body => Assert.Contains(chart.D1, p => p.Planet == body));
+        Assert.Equal(NineGrahas.Length + OuterPlanets.Length, chart.D1.Count);
         Assert.All(chart.D1, p => Assert.NotNull(p.House));
         Assert.All(chart.D1, p => Assert.InRange(p.House!.Value, 1, 12));
         Assert.NotNull(chart.AscendantSignIndex);
@@ -34,7 +43,7 @@ public class AstroEngineServiceTests
         var chart = service.ComputeBirthChart(
             new DateTime(1988, 10, 24, 12, 0, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: false);
 
-        Assert.Equal(9, chart.D1.Count);
+        Assert.Equal(12, chart.D1.Count);
         Assert.All(chart.D1, p => Assert.Null(p.House));
         Assert.All(chart.D1, p => Assert.InRange(p.SignIndex, 0, 11)); // signs are still real
 
@@ -90,16 +99,16 @@ public class AstroEngineServiceTests
     }
 
     [Fact]
-    public void ComputeBirthChart_TimeKnown_ReturnsD10AndD60ForAllNinePlanets()
+    public void ComputeBirthChart_TimeKnown_ReturnsD10AndD60ForEveryBody()
     {
         var service = BuildService();
 
         var chart = service.ComputeBirthChart(
             new DateTime(1988, 10, 24, 4, 42, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: true);
 
-        Assert.Equal(9, chart.D10.Count);
+        Assert.Equal(12, chart.D10.Count);
         Assert.NotNull(chart.D60);
-        Assert.Equal(9, chart.D60!.Count);
+        Assert.Equal(12, chart.D60!.Count);
         Assert.All(chart.D10, p => Assert.InRange(p.SignIndex, 0, 11));
         Assert.All(chart.D60, p => Assert.InRange(p.SignIndex, 0, 11));
     }
@@ -112,7 +121,7 @@ public class AstroEngineServiceTests
         var chart = service.ComputeBirthChart(
             new DateTime(1988, 10, 24, 12, 0, 0, DateTimeKind.Utc), 19.0760, 72.8777, timeKnown: false);
 
-        Assert.Equal(9, chart.D10.Count); // D10's 3° slices are wide enough to not need exact time
+        Assert.Equal(12, chart.D10.Count); // D10's 3° slices are wide enough to not need exact time
         Assert.Null(chart.D60); // D60's 0°30' slices are too narrow for an approximate time — see doc comment
     }
 

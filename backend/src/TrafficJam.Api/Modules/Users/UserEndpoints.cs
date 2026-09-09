@@ -17,10 +17,12 @@ public record OnboardingDraftRequest(
     string? Name, DateOnly? Dob, TimeOnly? Tob, bool? UnknownTime, string? Place, double? Lat, double? Lng, string? Timezone);
 
 public record NotificationPreferencesResponse(
-    bool Morning, bool RahuKaal, bool Events, bool Dasha, bool Remedies, Dictionary<string, string[]> Channels);
+    bool Morning, bool RahuKaal, bool Events, bool Dasha, bool Remedies, bool Chat,
+    Dictionary<string, string[]> Channels);
 
 public record NotificationPreferencesRequest(
-    bool Morning, bool RahuKaal, bool Events, bool Dasha, bool Remedies, Dictionary<string, string[]> Channels);
+    bool Morning, bool RahuKaal, bool Events, bool Dasha, bool Remedies, bool Chat,
+    Dictionary<string, string[]> Channels);
 
 public record DeviceRequest(string FcmToken, string Platform);
 
@@ -139,7 +141,7 @@ public static class UserEndpoints
             prefs ??= new NotificationPrefs { UserId = principal.UserId() };
 
             return Results.Ok(new NotificationPreferencesResponse(
-                prefs.Morning, prefs.RahuKaal, prefs.Events, prefs.Dasha, prefs.Remedies,
+                prefs.Morning, prefs.RahuKaal, prefs.Events, prefs.Dasha, prefs.Remedies, prefs.Chat,
                 JsonSerializer.Deserialize<Dictionary<string, string[]>>(prefs.ChannelsJson) ?? []));
         });
 
@@ -159,6 +161,7 @@ public static class UserEndpoints
             prefs.Events = request.Events;
             prefs.Dasha = request.Dasha;
             prefs.Remedies = request.Remedies;
+            prefs.Chat = request.Chat;
             prefs.ChannelsJson = JsonSerializer.Serialize(request.Channels);
 
             // TODO(notification-service): (un)subscribe the user's devices to/from
@@ -253,7 +256,13 @@ public static class UserEndpoints
     /// birth time is unknown — see AstroEngineService's and KpService's doc
     /// comments for why those two need a genuinely exact time.
     /// </summary>
-    private static async Task RegenerateChartAndDashaAsync(
+    /// <summary>
+    /// Recomputes and stores a user's chart and dasha from their birth data.
+    /// Internal rather than private because ChartEndpoints calls it to refresh
+    /// a row produced by an older engine version — one write path, so a
+    /// refreshed chart can't drift from a freshly saved one.
+    /// </summary>
+    internal static async Task RegenerateChartAndDashaAsync(
         AppDbContext db, Guid userId, DateOnly dob, TimeOnly? tob, bool unknownTime,
         double lat, double lng, string timezone, IAstroEngineService astroEngine, IDashaService dashaService,
         IKpService kpService, CancellationToken ct)
@@ -323,7 +332,8 @@ public static class UserEndpoints
         if (timeKnown)
         {
             var kpChart = kpService.Compute(new CosineKitty.AstroTime(birthUtc), lat, lng);
-            chart.KpJson = JsonSerializer.Serialize(kpChart.Planets, JsonConventions.CamelCase);
+            chart.EngineVersion = AstroEngineVersion.Current;
+        chart.KpJson = JsonSerializer.Serialize(kpChart.Planets, JsonConventions.CamelCase);
             chart.CuspJson = JsonSerializer.Serialize(kpChart.Cusps, JsonConventions.CamelCase);
         }
         else

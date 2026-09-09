@@ -25,6 +25,13 @@ public record KpLordship(string SignLord, string StarLord, string SubLord, strin
 /// </summary>
 public static class KpLordshipCalculator
 {
+    /// <summary>
+    /// Which graha rules each sign, Aries..Pisces. Public because KP's
+    /// significator rules need "houses owned by planet X", which is this
+    /// table read backwards — see KpService's significator computation.
+    /// </summary>
+    public static IReadOnlyList<string> RulerOfSign => SignLords;
+
     private static readonly string[] SignLords =
     [
         "Mars", "Venus", "Mercury", "Moon", "Sun", "Mercury",

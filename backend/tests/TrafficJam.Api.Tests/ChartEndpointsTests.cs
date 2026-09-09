@@ -69,16 +69,16 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         Assert.True(ascendant.TryGetProperty("signIndex", out _));
 
         var d1 = chart.GetProperty("d1");
-        Assert.Equal(9, d1.GetArrayLength());
+        Assert.Equal(12, d1.GetArrayLength());
         var sun = d1.EnumerateArray().Single(p => p.GetProperty("planet").GetString() == "Sun");
         Assert.True(sun.TryGetProperty("signIndex", out _));
         Assert.True(sun.TryGetProperty("degreeInSign", out _));
         Assert.True(sun.TryGetProperty("retrograde", out _));
         Assert.False(sun.TryGetProperty("Planet", out _)); // the PascalCase form must NOT be present
 
-        Assert.Equal(9, chart.GetProperty("d9").GetArrayLength());
-        Assert.Equal(9, chart.GetProperty("d10").GetArrayLength());
-        Assert.Equal(9, chart.GetProperty("d60").GetArrayLength()); // known birth time -> D60 populated
+        Assert.Equal(12, chart.GetProperty("d9").GetArrayLength());
+        Assert.Equal(12, chart.GetProperty("d10").GetArrayLength());
+        Assert.Equal(12, chart.GetProperty("d60").GetArrayLength()); // known birth time -> D60 populated
         // 9 grahas + Uranus/Neptune/Pluto + the Ascendant that opens the table.
         Assert.Equal(13, chart.GetProperty("kp").GetArrayLength());
         Assert.Equal(12, chart.GetProperty("cusps").GetArrayLength());
@@ -94,7 +94,7 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
 
         var chart = await client.GetFromJsonAsync<JsonElement>("/chart");
 
-        Assert.Equal(9, chart.GetProperty("d1").GetArrayLength()); // signs still computed
+        Assert.Equal(12, chart.GetProperty("d1").GetArrayLength()); // signs still computed
         Assert.Equal(0, chart.GetProperty("d60").GetArrayLength());
         Assert.Equal(0, chart.GetProperty("kp").GetArrayLength());
         Assert.Equal(0, chart.GetProperty("cusps").GetArrayLength());
@@ -206,7 +206,7 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         Assert.True(chart.TryGetProperty("nakshatra", out _));
         Assert.True(chart.TryGetProperty("ascendant", out var ascendant));
         Assert.True(ascendant.TryGetProperty("signIndex", out _));
-        Assert.Equal(9, chart.GetProperty("d1").GetArrayLength());
+        Assert.Equal(12, chart.GetProperty("d1").GetArrayLength());
         // 9 grahas + Uranus/Neptune/Pluto + the Ascendant that opens the table.
         Assert.Equal(13, chart.GetProperty("kp").GetArrayLength()); // known birth time -> KP populated
         Assert.Equal(12, chart.GetProperty("cusps").GetArrayLength());
@@ -227,7 +227,7 @@ public class ChartEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLi
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         var chart = body.GetProperty("chart");
-        Assert.Equal(9, chart.GetProperty("d1").GetArrayLength()); // signs still computed
+        Assert.Equal(12, chart.GetProperty("d1").GetArrayLength()); // signs still computed
         Assert.Equal(0, chart.GetProperty("kp").GetArrayLength());
         Assert.Equal(0, chart.GetProperty("cusps").GetArrayLength());
     }
