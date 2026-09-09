@@ -5,7 +5,7 @@ import '../widgets/chart_painters.dart' show housesFromPlanets;
 
 /// Builds a downloadable PDF of a Kundli — cover page, birth details, every
 /// divisional chart the app itself computes (D1/D9/D10/D60) as a diamond +
-/// table, Vimshottari Dasha, KP cuspal sub-lords, and Doshas. Deliberately
+/// table, Vimshottari Dasha and KP cuspal sub-lords. Deliberately
 /// limited to what this app actually computes — no Shadbala/Bhavbala/
 /// Ashtakvarga/Yogini Dasha/predictions/Rudraksha/gemstones, none of which
 /// exist in this codebase yet (see the Kundli-report scoping discussion).
@@ -29,7 +29,6 @@ class KundliPdfService {
     required String place,
     required Map<String, dynamic>? chart,
     required Map<String, dynamic>? dasha,
-    required Map<String, dynamic>? doshas,
   }) async {
     final doc = pw.Document();
     final generatedOn = _formatDate(DateTime.now());
@@ -87,9 +86,6 @@ class KundliPdfService {
       doc.addPage(_kpPage(chart['cusps'] as List<dynamic>));
     }
 
-    if (doshas != null) {
-      doc.addPage(_doshaPage(doshas));
-    }
 
     doc.addPage(_closingPage());
 
@@ -470,56 +466,6 @@ class KundliPdfService {
       ),
     );
   }
-
-  // ── Doshas ────────────────────────────────────────────────────────────
-
-  static pw.Page _doshaPage(Map<String, dynamic> doshas) {
-    final mangal = doshas['mangal'] as Map<String, dynamic>?;
-    final kaalSarp = doshas['kaalSarp'] as Map<String, dynamic>?;
-    final sadeSati = doshas['sadeSati'] as Map<String, dynamic>?;
-    final isManglik = mangal?['fromLagna'] as bool? ?? false;
-    final hasKaalSarp = kaalSarp?['isPresent'] as bool? ?? false;
-    final sadeSatiActive = sadeSati?['isActive'] as bool? ?? false;
-
-    return pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(32),
-      build: (ctx) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('08', 'Dosha Analysis'),
-          pw.SizedBox(height: 18),
-          _doshaRow('Manglik Dosha', isManglik ? 'Manglik' : 'Non-Manglik', isManglik),
-          pw.SizedBox(height: 10),
-          _doshaRow('Kaal Sarp Dosha', hasKaalSarp ? 'Present' : 'Not Present', hasKaalSarp),
-          pw.SizedBox(height: 10),
-          _doshaRow('Sade Sati', sadeSatiActive ? 'Active${sadeSati?['phase'] != null ? " — ${sadeSati!['phase']}" : ""}' : 'Not Active', sadeSatiActive),
-          pw.Spacer(),
-          _footer(ctx),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _doshaRow(String label, String status, bool flagged) => pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: pw.BoxDecoration(
-          color: flagged ? PdfColor.fromInt(0xFFFCEEEE) : PdfColor.fromInt(0xFFEFF7EF),
-          borderRadius: pw.BorderRadius.circular(6),
-        ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(label, style: pw.TextStyle(fontSize: 12, color: _ink, fontWeight: pw.FontWeight.bold)),
-            pw.Text(status,
-                style: pw.TextStyle(
-                  fontSize: 11,
-                  color: flagged ? PdfColor.fromInt(0xFFB33A3A) : PdfColor.fromInt(0xFF3A8A4A),
-                  fontWeight: pw.FontWeight.bold,
-                )),
-          ],
-        ),
-      );
 
   static pw.Page _closingPage() {
     return pw.Page(

@@ -80,7 +80,6 @@ class _GetKundliScreenState extends State<GetKundliScreen> {
         generatedOn: 'just now',
         chart: computed['chart'] as Map<String, dynamic>,
         dasha: computed['dasha'] as Map<String, dynamic>,
-        doshas: computed['doshas'] as Map<String, dynamic>?,
       );
       KundliStore.add(profile);
 

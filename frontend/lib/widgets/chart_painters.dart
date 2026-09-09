@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -20,13 +21,25 @@ import '../theme/app_theme.dart';
 /// a reference app on the same birth data — D10 agreed on all nine grahas and
 /// D60 on eight of nine, while the numbering made them look unrelated.
 class NorthChartPainter extends CustomPainter {
-  const NorthChartPainter(this.houses, this.ascendantSign);
+  const NorthChartPainter(this.houses, this.ascendantSign, {this.houseSigns});
 
   final Map<int, String> houses;
 
   /// 0=Aries..11=Pisces. House 1 holds this sign; each later house holds the
   /// next sign round, since these charts are whole-sign.
   final int ascendantSign;
+
+  /// House number to sign index, for charts whose houses are NOT whole-sign.
+  /// KP works in Placidus, where houses are unequal: one sign can hold two
+  /// cusps and another none, so the whole-sign walk from [ascendantSign] would
+  /// print sign numbers the chart doesn't actually have. Null everywhere else,
+  /// which keeps the whole-sign behaviour every Vedic varga chart wants.
+  final Map<int, int>? houseSigns;
+
+  int _signNumberFor(int house) =>
+      houseSigns != null && houseSigns!.containsKey(house)
+          ? houseSigns![house]! + 1
+          : (ascendantSign + house - 1) % 12 + 1;
 
   static const Map<int, Offset> _centers = {
     1: Offset(0.50, 0.25), 2: Offset(0.25, 0.11), 3: Offset(0.11, 0.25),
@@ -62,7 +75,7 @@ class NorthChartPainter extends CustomPainter {
       if (c == null) continue;
       final label = houses[house];
       final isAsc = label?.startsWith('As') ?? false;
-      final signNumber = (ascendantSign + house - 1) % 12 + 1;
+      final signNumber = _signNumberFor(house);
 
       final numberTp = TextPainter(
         text: TextSpan(
@@ -104,7 +117,9 @@ class NorthChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant NorthChartPainter old) =>
-      old.houses != houses || old.ascendantSign != ascendantSign;
+      old.houses != houses ||
+      old.ascendantSign != ascendantSign ||
+      !mapEquals(old.houseSigns, houseSigns);
 }
 
 /// Draws the South-Indian fixed 4x4 grid — signs sit in fixed cells; each
@@ -196,6 +211,10 @@ class SouthChartPainter extends CustomPainter {
 const planetAbbr = {
   'Sun': 'Su', 'Moon': 'Mo', 'Mars': 'Ma', 'Mercury': 'Me', 'Jupiter': 'Ju',
   'Venus': 'Ve', 'Saturn': 'Sa', 'Rahu': 'Ra', 'Ketu': 'Ke',
+  // Outer planets. Three letters, not two, so nobody reads "Ur" as a graha
+  // abbreviation they half-recognise — these are not grahas and no classical
+  // rule in this app touches them.
+  'Uranus': 'Ura', 'Neptune': 'Nep', 'Pluto': 'Plu',
 };
 
 /// Builds a house→label map (house 1 always includes "As") from any `/chart`
@@ -216,4 +235,65 @@ Map<int, String> housesFromPlanets(List<dynamic> planets) {
   }
   houses[1] = houses.containsKey(1) ? 'As\n${houses[1]}' : 'As';
   return houses;
+}
+
+/// The North Indian chart's outline at icon size — outer square, both
+/// diagonals, inner diamond on the side midpoints.
+///
+/// Its own painter rather than a shrunken [NorthChartPainter]: that one also
+/// draws twelve sign numbers and any planets in each house, which at 20px
+/// would be an unreadable smudge. This is the silhouette alone, which is what
+/// makes the chart recognisable.
+class NorthChartGlyph extends StatelessWidget {
+  const NorthChartGlyph({super.key, this.size = 20, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _NorthChartGlyphPainter(color)),
+      );
+}
+
+class _NorthChartGlyphPainter extends CustomPainter {
+  const _NorthChartGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      // Scales with the glyph so it stays crisp at any size rather than going
+      // spidery when drawn large or muddy when drawn small.
+      ..strokeWidth = size.width / 14
+      ..strokeJoin = StrokeJoin.round;
+
+    // Inset by half the stroke so the outer square isn't clipped at the edge.
+    final inset = line.strokeWidth / 2;
+    final w = size.width - inset * 2;
+    final h = size.height - inset * 2;
+    final rect = Rect.fromLTWH(inset, inset, w, h);
+
+    canvas.drawRect(rect, line);
+    canvas.drawLine(rect.topLeft, rect.bottomRight, line);
+    canvas.drawLine(rect.topRight, rect.bottomLeft, line);
+
+    canvas.drawPath(
+      Path()
+        ..moveTo(rect.center.dx, rect.top)
+        ..lineTo(rect.right, rect.center.dy)
+        ..lineTo(rect.center.dx, rect.bottom)
+        ..lineTo(rect.left, rect.center.dy)
+        ..close(),
+      line,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _NorthChartGlyphPainter old) => old.color != color;
 }

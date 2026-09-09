@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:printing/printing.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
 import '../../nav.dart';
 import '../../models/kundli_profile.dart';
 import '../../services/chart_api.dart';
-import '../../services/dosha_api.dart';
 import '../../services/api_client.dart';
 import '../../services/user_api.dart';
+import '../../services/pdf_download_service.dart';
 import '../../services/kundli_pdf_service.dart';
 import 'dasha_timeline_screen.dart';
 
@@ -34,9 +34,13 @@ String _formatDeg(double deg) {
   return "${wholeDeg.toString().padLeft(2, '0')}°${minutes.toString().padLeft(2, '0')}'";
 }
 
-String _monthYear(DateTime d) => '${_monthNamesFull[d.month - 1].toUpperCase()} ${d.year}';
-String _dateShort(DateTime d) =>
-    '${d.day} ${_monthNamesFull[d.month - 1].substring(0, 3)} ${d.year}';
+/// dd-MM-yyyy, zero-padded — the form Dasha boundaries are quoted in. A period
+/// hands over on a specific day, and "ENDS APRIL 2036" left the reader to
+/// guess which day of that month it was.
+String _dateDmy(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.year}';
 
 double _elapsedFraction(DateTime start, DateTime end) {
   final total = end.difference(start).inMilliseconds;
@@ -93,13 +97,12 @@ class KundliScreen extends StatefulWidget {
 }
 
 class _KundliScreenState extends State<KundliScreen> {
-  int _section = 0; // Planet / Dasha / Charts / KP / Cusp
+  int _section = 0; // Charts / KP System / Cusp / Dasha / Planet
   int _chartIndex = 0; // D1 / D9 / D10 / D60
   bool _southIndian = false;
 
   Map<String, dynamic>? _chart;
   Map<String, dynamic>? _dasha;
-  Map<String, dynamic>? _doshas;
   bool _loading = false;
   String? _error; // 'no-data' | 'generic' | null
 
@@ -112,7 +115,10 @@ class _KundliScreenState extends State<KundliScreen> {
   String? _ownName;
   String? _ownDobDisplay;
 
-  static const _sections = ['Planet', 'Dasha', 'Charts', 'KP System', 'Cusp', 'Doshas'];
+  // Charts first: the diagram is what people open a Kundli for, so it is the
+  // landing tab. The tables that read off it follow, then the timeline, then
+  // the raw positions.
+  static const _sections = ['Charts', 'KP System', 'Cusp', 'Dasha', 'Planet'];
 
   KundliProfile get _profile => widget.profile ?? KundliProfile.own;
 
@@ -127,8 +133,14 @@ class _KundliScreenState extends State<KundliScreen> {
       // pushed — nothing to fetch.
       _chart = _profile.chart;
       _dasha = _profile.dasha;
-      _doshas = _profile.doshas;
     }
+  }
+
+  /// Pull-to-refresh. Re-fetches the chart, the dasha and the header identity
+  /// together, so a chart recomputed server-side (new birth data saved on
+  /// another device, or an engine change) shows up without a reinstall.
+  Future<void> _refresh() async {
+    await Future.wait([_load(showSpinner: false), _loadOwnIdentity()]);
   }
 
   Future<void> _loadOwnIdentity() async {
@@ -158,28 +170,21 @@ class _KundliScreenState extends State<KundliScreen> {
     return raw.split('-').first;
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showSpinner = true}) async {
     setState(() {
-      _loading = true;
+      // A pull-to-refresh draws its own spinner, so the page keeps showing the
+      // chart it already has instead of flashing to the full-screen loader and
+      // back.
+      if (showSpinner) _loading = true;
       _error = null;
     });
     try {
       final chart = await ChartApi.getChart();
       final dasha = await ChartApi.getDasha();
-      // Doshas need a saved chart too, but a failure here (e.g. a transient
-      // error) shouldn't block the rest of the Kundli — it just leaves the
-      // Doshas tab showing its own empty state.
-      Map<String, dynamic>? doshas;
-      try {
-        doshas = await DoshaApi.getDoshas();
-      } catch (_) {
-        doshas = null;
-      }
       if (!mounted) return;
       setState(() {
         _chart = chart;
         _dasha = dasha;
-        _doshas = doshas;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -197,18 +202,16 @@ class _KundliScreenState extends State<KundliScreen> {
     }
   }
 
-  /// Retry / pull-to-refresh entry point. Re-runs the same load `initState`
-  /// ran, so a failure caused by a dropped connection clears in place instead
-  /// of needing the app restarted.
-  Future<void> _refresh() => _load();
-
 
   bool _exporting = false;
 
-  /// Builds the same downloadable PDF the report's Share icon offers —
-  /// cover page, birth details, every chart the app computes as a diamond +
-  /// table, Dasha, KP cusps and Doshas — then hands it to the OS share sheet
-  /// (Printing.sharePdf), whose "Save to Files" is this app's download.
+  /// Builds the Kundli PDF — cover page, birth details, every chart the app
+  /// computes as a diamond + table, Dasha and KP cusps — and saves it to the
+  /// device's Downloads folder.
+  ///
+  /// This used to hand the PDF to the system share sheet and rely on the user
+  /// finding "Save to Files" inside it. That is a share, not a download, and
+  /// it didn't work reliably — see PdfDownloadService.
   Future<void> _downloadPdf(KundliProfile profile) async {
     if (_chart == null && profile.chart == null) {
       toast(context, "Nothing to export yet — save birth details first.");
@@ -251,11 +254,15 @@ class _KundliScreenState extends State<KundliScreen> {
         place: place,
         chart: profile.isOwn ? _chart : profile.chart,
         dasha: profile.isOwn ? _dasha : profile.dasha,
-        doshas: profile.isOwn ? _doshas : profile.doshas,
       );
 
+      final fileName = '${name.replaceAll(' ', '_')}_Kundli.pdf';
+      final location = await PdfDownloadService.save(bytes, fileName);
+
       if (!mounted) return;
-      await Printing.sharePdf(bytes: bytes, filename: '${name.replaceAll(' ', '_')}_kundli.pdf');
+      toast(context, 'Saved to $location — $fileName');
+    } on PlatformException catch (e) {
+      if (mounted) toast(context, e.message ?? "Couldn't save the PDF.");
     } catch (_) {
       if (mounted) toast(context, "Couldn't generate the PDF — try again.");
     } finally {
@@ -268,16 +275,24 @@ class _KundliScreenState extends State<KundliScreen> {
     final profile = _profile;
     return DetailScaffold(
       title: profile.isOwn ? 'My Kundli' : profile.name,
+      // Only the user's own Kundli can be refetched. A generated profile was
+      // computed once by get_kundli_screen and handed over — there is no
+      // endpoint to pull it again, so it gets no refresh gesture rather than
+      // one that silently does nothing.
+      onRefresh: profile.isOwn ? _refresh : null,
       actions: [
         IconButton(
           onPressed: _exporting ? null : () => _downloadPdf(profile),
+          tooltip: 'Download Kundli PDF',
+          // A download arrow, not a share glyph — the action saves the file to
+          // the device rather than handing it to another app.
           icon: _exporting
               ? const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                 )
-              : const Icon(Icons.ios_share, size: 18, color: AppColors.textPrimary),
+              : const Icon(Icons.download_outlined, size: 20, color: AppColors.textPrimary),
         ),
       ],
       child: Column(
@@ -353,10 +368,6 @@ class _KundliScreenState extends State<KundliScreen> {
 
     switch (_section) {
       case 0:
-        return _PlanetTab(chart: chart);
-      case 1:
-        return _DashaTab(dasha: dasha);
-      case 2:
         return _ChartsTab(
           profile: profile,
           chart: chart,
@@ -365,13 +376,15 @@ class _KundliScreenState extends State<KundliScreen> {
           onChartChanged: (i) => setState(() => _chartIndex = i),
           onStyleChanged: (v) => setState(() => _southIndian = v),
         );
-      case 3:
+      case 1:
         return _KpTab(chart: chart);
-      case 4:
+      case 2:
         return _CuspTab(chart: chart);
-      case 5:
+      case 3:
+        return _DashaTab(dasha: dasha);
+      case 4:
       default:
-        return _DoshaTab(doshas: _doshas);
+        return _PlanetTab(chart: chart);
     }
   }
 }
@@ -489,7 +502,7 @@ class _PlanetTab extends StatelessWidget {
           radius: AppRadius.md,
           child: Column(
             children: [
-              _row(const ['GRAHA', 'RASHI', 'DEG', 'H'], isHeader: true),
+              _row(const ['GRAHA', 'RASHI', 'DEGREE', 'HOUSE'], isHeader: true),
               if (d1 != null)
                 for (int i = 0; i < d1.length; i++)
                   _tapRowReal(context, d1[i] as Map<String, dynamic>,
@@ -720,7 +733,7 @@ class _DashaTab extends StatelessWidget {
                       children: [
                         Text('$mahaLord Mahadasha',
                             style: AppText.serif(size: 18, weight: FontWeight.w600)),
-                        Text('ENDS ${_monthYear(mahaEnd)}',
+                        Text('ENDS ${_dateDmy(mahaEnd)}',
                             style: AppText.sans(
                                 size: 10,
                                 color: AppColors.textMuted,
@@ -732,7 +745,7 @@ class _DashaTab extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
               Text(
-                '$mahaLord Mahadasha runs from ${_dateShort(mahaStart)} to ${_dateShort(mahaEnd)}.',
+                '$mahaLord Mahadasha runs from ${_dateDmy(mahaStart)} to ${_dateDmy(mahaEnd)}.',
                 style: AppText.sans(
                     size: 13, color: AppColors.textCream, height: 1.5),
               ),
@@ -752,8 +765,8 @@ class _DashaTab extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  '${antar['lord']} Antardasha runs from ${_dateShort(_parseUtc(antar['start'] as String))} '
-                  'to ${_dateShort(_parseUtc(antar['end'] as String))}, within the $mahaLord Mahadasha.',
+                  '${antar['lord']} Antardasha runs from ${_dateDmy(_parseUtc(antar['start'] as String))} '
+                  'to ${_dateDmy(_parseUtc(antar['end'] as String))}, within the $mahaLord Mahadasha.',
                   style: AppText.sans(
                       size: 13, color: AppColors.textMuted, height: 1.5),
                 ),
@@ -905,10 +918,26 @@ class _ChartsTab extends StatelessWidget {
   // Ascendant sign index per varga (0=Aries..11=Pisces) — for South layout only.
   static const _mockAscendantSign = [4, 9, 0, 3]; // Leo, Capricorn, Aries, Cancer
 
+  // abbreviation, English name, Hindi name. The English name stays because the
+  // abbreviations are drawn from it — 'Mo' only explains itself next to 'Moon',
+  // not next to 'Chandra'.
   static const _legend = [
-    ['As', 'Ascendant'], ['Su', 'Sun'], ['Mo', 'Moon'], ['Ma', 'Mars'],
-    ['Me', 'Mercury'], ['Ju', 'Jupiter'], ['Ve', 'Venus'], ['Sa', 'Saturn'],
-    ['Ra', 'Rahu'], ['Ke', 'Ketu'],
+    ['As', 'Ascendant', 'लग्न'],
+    ['Su', 'Sun', 'सूर्य'],
+    ['Mo', 'Moon', 'चंद्र'],
+    ['Ma', 'Mars', 'मंगल'],
+    ['Me', 'Mercury', 'बुध'],
+    ['Ju', 'Jupiter', 'गुरु'],
+    ['Ve', 'Venus', 'शुक्र'],
+    ['Sa', 'Saturn', 'शनि'],
+    ['Ra', 'Rahu', 'राहु'],
+    ['Ke', 'Ketu', 'केतु'],
+    // Not grahas — shown in the divisional charts only, with no part in any
+    // classical rule. No traditional Hindi name exists for them; the ones in
+    // modern use are transliterations, so the English name stands alone.
+    ['Ura', 'Uranus', ''],
+    ['Nep', 'Neptune', ''],
+    ['Plu', 'Pluto', ''],
   ];
 
   bool get _isD1 => chartIndex == 0;
@@ -931,8 +960,8 @@ class _ChartsTab extends StatelessWidget {
   // Every chart's own Lagna (house 1) — D1's from `ascendant`, each varga's
   // from its own `d9AscendantSignIndex`/etc. (see AstroModels.cs's
   // BirthChartResult doc comment). Null for D9/D10 when the birth time is
-  // unknown — their planet *signs* are still valid then, just not houses —
-  // which is exactly when this chart falls back to a plain sign list below
+  // which is exactly when this chart shows a notice instead of a diamond
+  // with nowhere honest to put "house 1".
   // instead of a diamond with nowhere honest to put "house 1".
   int? get _ascendantSignIndexForCurrentChart {
     if (chart == null) return null;
@@ -956,17 +985,6 @@ class _ChartsTab extends StatelessWidget {
               style: AppText.serif(size: 22, color: AppColors.textPrimary)),
         ),
         const SizedBox(height: AppSpacing.md),
-        _howToReadNote(
-          "The diamond's twelve slots are the twelve houses, in fixed "
-          "positions — house 1 is always the top-centre slot, marked 'As', "
-          "and they run anticlockwise from there. The small number in each "
-          "slot is the sign sitting in that house (1 = Aries ... 12 = "
-          "Pisces), which is how North Indian charts are labelled everywhere. "
-          "Every divisional chart (D1, D9, D10, D60...) re-slices the same "
-          "birth moment through a different lens — the signs and placements "
-          "shift, the underlying birth data doesn't.",
-        ),
-        const SizedBox(height: AppSpacing.lg),
         // Shown on every chart, not just D1. The North/South choice is applied
         // to all four, but the control used to appear only on D1 — so a South
         // Indian selection followed the reader into D9/D10/D60 with no way to
@@ -988,16 +1006,36 @@ class _ChartsTab extends StatelessWidget {
           )
         else if (chart == null)
           _mockChartCard()
-        else if (_ascendantSignIndexForCurrentChart != null) ...[
-          _realChartCard(_ascendantSignIndexForCurrentChart!, _planets!),
-          const SizedBox(height: AppSpacing.lg),
-          _realVargaSignList(_planets!),
-        ] else
-          _realVargaSignList(_planets!),
+        else if (_ascendantSignIndexForCurrentChart != null)
+          _realChartCard(_ascendantSignIndexForCurrentChart!, _planets!)
+        else
+          // D9/D10 with no birth time: the planet signs are still valid,
+          // but there is no Lagna to count houses from, so the diamond
+          // has nowhere honest to put house 1. Says so rather than
+          // drawing a chart that would be wrong.
+          _lockedNotice(
+            'This chart needs a real clock time to place the planets into houses. '
+            '${profile.isOwn ? "You" : profile.name} marked the birth time as unknown, '
+            'so the diagram can\'t be drawn.',
+          ),
         const SizedBox(height: AppSpacing.lg),
         Text(_notes[chartIndex],
             textAlign: TextAlign.center,
             style: AppText.sans(size: 13, color: AppColors.textTan, height: 1.55)),
+        const SizedBox(height: AppSpacing.lg),
+        // Below the diamond, not above it. The chart is what the tab is for
+        // and it used to open a full screen of explanation away — you had to
+        // scroll to reach the thing you came for.
+        _howToReadNote(
+          "The diamond's twelve slots are the twelve houses, in fixed "
+          "positions — house 1 is always the top-centre slot, marked 'As', "
+          "and they run anticlockwise from there. The small number in each "
+          "slot is the sign sitting in that house (1 = Aries ... 12 = "
+          "Pisces), which is how North Indian charts are labelled everywhere. "
+          "Every divisional chart (D1, D9, D10, D60...) re-slices the same "
+          "birth moment through a different lens — the signs and placements "
+          "shift, the underlying birth data doesn't.",
+        ),
         if (_isD60 && !_d60Locked) ...[
           const SizedBox(height: AppSpacing.md),
           _sensitivityNote(),
@@ -1007,7 +1045,7 @@ class _ChartsTab extends StatelessWidget {
           _vargottamaNote(),
         ],
         const SizedBox(height: AppSpacing.section),
-        const SectionLabel('LEGEND'),
+        const SectionLabel('CHART ABBREVIATIONS'),
         const SizedBox(height: AppSpacing.md),
         GlassCard(
           radius: AppRadius.md,
@@ -1015,7 +1053,7 @@ class _ChartsTab extends StatelessWidget {
           child: Wrap(
             spacing: AppSpacing.lg,
             runSpacing: AppSpacing.md,
-            children: [for (final l in _legend) _legendItem(l[0], l[1])],
+            children: [for (final l in _legend) _legendItem(l[0], l[1], l[2])],
           ),
         ),
       ],
@@ -1094,98 +1132,6 @@ class _ChartsTab extends StatelessWidget {
               ? SouthChartPainter(houses, ascendantSignIndex)
               : NorthChartPainter(houses, ascendantSignIndex),
         ),
-      ),
-    );
-  }
-
-  // The table alongside every diamond — same planet/sign/degree/house
-  // columns as the Planet tab, just scoped to whichever chart is selected
-  // here. Also stands alone (no House column filled in) for D9/D10 when the
-  // birth time is unknown and there's no honest house to show.
-  /// A planet's real position, by name — the D1 sign degree.
-  ///
-  /// A divisional chart is a *sign mapping*: it says which D9/D10/D60 sign a
-  /// planet falls in, and that's all it says. The backend also reports a
-  /// `degreeInSign` for each varga entry, but that number is the planet's
-  /// position within its narrow division stretched out to a 0-30° scale — an
-  /// internal quantity, not a position. Showing it made every degree in these
-  /// tables disagree with every other astrology tool (the Sun at Taurus 00°33'
-  /// appeared as "Capricorn 05°01'" in D9), while the signs beside them were
-  /// right all along. The planet's actual degree is the number a reader can
-  /// check, so that's what's shown.
-  Map<String, double> get _realDegreeByPlanet {
-    final d1 = chart?['d1'] as List<dynamic>?;
-    if (d1 == null) return const {};
-    return {
-      for (final e in d1)
-        (e as Map<String, dynamic>)['planet'] as String:
-            (e['degreeInSign'] as num).toDouble(),
-    };
-  }
-
-  Widget _realVargaSignList(List<dynamic> planets) {
-    final realDegrees = _realDegreeByPlanet;
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      radius: AppRadius.md,
-      child: Column(
-        children: [
-          _vargaRow(const {'planet': 'GRAHA', 'sign': 'RASHI', 'house': 'H'},
-              isHeader: true, last: false, realDegree: null),
-          for (int i = 0; i < planets.length; i++)
-            _vargaRow(planets[i] as Map<String, dynamic>,
-                last: i == planets.length - 1,
-                realDegree: realDegrees[
-                    (planets[i] as Map<String, dynamic>)['planet'] as String]),
-        ],
-      ),
-    );
-  }
-
-  Widget _vargaRow(Map<String, dynamic> p,
-      {bool isHeader = false, required bool last, required double? realDegree}) {
-    final headerStyle = AppText.sans(
-        size: 9,
-        weight: FontWeight.w700,
-        color: AppColors.textPrimary.withValues(alpha: 0.4),
-        letterSpacing: 0.8);
-    final degreeCell = isHeader
-        ? 'DEG'
-        : realDegree == null
-            ? '—'
-            : '${_formatDeg(realDegree)}${(p['retrograde'] as bool) ? ' R' : ''}';
-    final houseCell = isHeader ? p['house'] as String : (p['house'] as int?)?.toString() ?? '—';
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: isHeader ? 10 : 13),
-      decoration: BoxDecoration(
-        color: isHeader ? AppColors.textPrimary.withValues(alpha: 0.02) : null,
-        border: last
-            ? null
-            : Border(bottom: BorderSide(color: AppColors.textPrimary.withValues(alpha: 0.05))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-              flex: 3,
-              child: Text(p['planet'] as String,
-                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.gold))),
-          Expanded(
-              flex: 4,
-              child: Text(p['sign'] as String,
-                  style: isHeader
-                      ? headerStyle
-                      : AppText.sans(size: 13, color: AppColors.textPrimary))),
-          Expanded(
-              flex: 3,
-              child: Text(degreeCell,
-                  textAlign: TextAlign.right,
-                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.textMuted))),
-          Expanded(
-              flex: 2,
-              child: Text(houseCell,
-                  textAlign: TextAlign.center,
-                  style: isHeader ? headerStyle : AppText.sans(size: 13, color: AppColors.textPrimary))),
-        ],
       ),
     );
   }
@@ -1289,7 +1235,7 @@ class _ChartsTab extends StatelessWidget {
     );
   }
 
-  Widget _legendItem(String abbr, String name) {
+  Widget _legendItem(String abbr, String name, String hindi) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1298,6 +1244,13 @@ class _ChartsTab extends StatelessWidget {
                 size: 13, weight: FontWeight.w700, color: AppColors.amber)),
         const SizedBox(width: AppSpacing.xs),
         Text(name, style: AppText.sans(size: 13, color: AppColors.textMuted)),
+        const SizedBox(width: AppSpacing.xs),
+        // Devanagari has no glyphs in the app's own typefaces; this leans on
+        // the platform's font fallback, which is why it isn't styled with
+        // AppText.sans like its neighbours.
+        Text(hindi,
+            style: const TextStyle(
+                fontSize: 13, height: 1.4, color: AppColors.textTan)),
       ],
     );
   }
@@ -1316,6 +1269,10 @@ class _KpTab extends StatelessWidget {
     final planets = chart == null ? null : chart!['kp'] as List<dynamic>;
     final locked = chart != null && planets!.isEmpty;
 
+    final cusps = chart == null ? null : chart!['cusps'] as List<dynamic>;
+    final significators =
+        chart == null ? null : chart!['kpSignificators'] as List<dynamic>?;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1327,23 +1284,59 @@ class _KpTab extends StatelessWidget {
           'system.',
           style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
         ),
-        const SizedBox(height: AppSpacing.md),
-        _howToReadNote(
-          'Each position carries four rulers, from coarse to fine: the Sign '
-          'Lord rules the sign it falls in, the Nakshatra Lord the star, and '
-          'the Sub and Sub-Sub Lords come from dividing that star twice over. '
-          'KP treats the Sub Lord as the real decision-maker — often weighted '
-          'above the sign itself.',
-        ),
         const SizedBox(height: AppSpacing.lg),
         if (locked)
           _kpLockedNotice('KP lordships are read off the Placidus house cusps, '
               'which need a birth time exact to the minute.')
         else ...[
+          // ── 1. The KP (cuspal) chart ──────────────────────────────────
+          const SectionLabel('KP CHART'),
+          const SizedBox(height: AppSpacing.md),
+          if (planets != null && cusps != null)
+            _kpCuspChartCard(planets, cusps)
+          else
+            _kpChartPlaceholder(),
+          const SizedBox(height: AppSpacing.lg),
+          _howToReadNote(
+            'KP places the houses by Placidus, not by whole signs. Each slot '
+            'is a house, numbered as always from the top-centre; the small '
+            'number is the sign its CUSP falls in. Because Placidus houses '
+            'are unequal, the same sign can head two houses and another sign '
+            'none — which is why these numbers do not simply run 1..12 the '
+            'way they do on the Rashi chart below.',
+          ),
+          const SizedBox(height: AppSpacing.section),
+
+          // ── 2. The same planets read by sign ──────────────────────────
+          const SectionLabel('RASHI CHART'),
+          const SizedBox(height: AppSpacing.md),
+          if (planets != null)
+            _kpRashiChartCard(planets)
+          else
+            _kpChartPlaceholder(),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            'The same moment read the ordinary way — planets by sign, houses '
+            'counted whole-sign from the Ascendant. Shown beside the KP chart '
+            'because the two disagree on purpose: where a planet sits by sign '
+            'and which KP house it answers to are different questions.',
+            style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
+          ),
+          const SizedBox(height: AppSpacing.section),
+
+          // ── 3. The lordship chain ─────────────────────────────────────
           const SectionLabel('PLANETS'),
+          const SizedBox(height: AppSpacing.sm),
+          _howToReadNote(
+            'Each position carries four rulers, from coarse to fine: the Sign '
+            'Lord rules the sign it falls in, the Nakshatra Lord the star, and '
+            'the Sub and Sub-Sub Lords come from dividing that star twice over. '
+            'KP treats the Sub Lord as the real decision-maker — often weighted '
+            'above the sign itself.',
+          ),
           const SizedBox(height: AppSpacing.md),
           KpTable(
-            firstColumnLabel: 'Pla',
+            firstColumnLabel: 'Planet',
             rows: [
               if (planets != null)
                 for (final p in planets)
@@ -1358,9 +1351,181 @@ class _KpTab extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           _kpLegend(),
+          const SizedBox(height: AppSpacing.section),
+
+          // ── 4. What each planet speaks for ────────────────────────────
+          const SectionLabel('PLANET SIGNIFICATORS'),
+          const SizedBox(height: AppSpacing.sm),
+          _howToReadNote(
+            'Which houses each planet speaks for, strongest column first. KP '
+            'reads a planet as the agent of the star it sits in, so the houses '
+            "of its star lord outrank its own — which is why the star lord's "
+            'columns come first. A planet with no entry in a column signifies '
+            'nothing at that level: Rahu, Ketu and the outer planets rule no '
+            'sign, so they never own a house.',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (significators != null && significators.isNotEmpty)
+            _significatorTable(significators)
+          else
+            _kpLockedNotice(
+                'Significators are derived from the Placidus cusps, so they '
+                'need the same exact birth time the rest of KP does.'),
         ],
       ],
     );
+  }
+
+  /// The KP chart: Placidus houses, each slot labelled with its own cusp's
+  /// sign rather than a whole-sign walk from the Ascendant.
+  Widget _kpCuspChartCard(List<dynamic> planets, List<dynamic> cusps) {
+    final houseSigns = <int, int>{
+      for (final c in cusps)
+        (c as Map<String, dynamic>)['house'] as int: c['signIndex'] as int,
+    };
+
+    // Planets carry their real Placidus house from the backend, so the labels
+    // come straight off that rather than being re-derived here.
+    final labels = <int, String>{};
+    for (final entry in planets) {
+      final p = entry as Map<String, dynamic>;
+      if (p['planet'] == 'Ascendant') continue;
+      final house = p['house'] as int?;
+      if (house == null) continue;
+      final abbr = kpAbbreviation(p['planet'] as String);
+      labels[house] = labels.containsKey(house) ? '${labels[house]}\n$abbr' : abbr;
+    }
+    labels[1] = labels.containsKey(1) ? 'As\n${labels[1]}' : 'As';
+
+    final ascSign = houseSigns[1] ?? 0;
+    return _chartCard(
+        NorthChartPainter(labels, ascSign, houseSigns: houseSigns));
+  }
+
+  /// The Rashi chart from the same KP positions — planets by sign, houses
+  /// whole-sign from the Ascendant's sign. No houseSigns override: here the
+  /// whole-sign walk is the correct reading.
+  Widget _kpRashiChartCard(List<dynamic> planets) {
+    final asc = planets.cast<Map<String, dynamic>>().firstWhere(
+        (p) => p['planet'] == 'Ascendant',
+        orElse: () => const {'signIndex': 0});
+    final ascSign = asc['signIndex'] as int? ?? 0;
+
+    final labels = <int, String>{};
+    for (final entry in planets) {
+      final p = entry as Map<String, dynamic>;
+      if (p['planet'] == 'Ascendant') continue;
+      final sign = p['signIndex'] as int?;
+      if (sign == null) continue;
+      final house = (sign - ascSign + 12) % 12 + 1;
+      final abbr = kpAbbreviation(p['planet'] as String);
+      labels[house] = labels.containsKey(house) ? '${labels[house]}\n$abbr' : abbr;
+    }
+    labels[1] = labels.containsKey(1) ? 'As\n${labels[1]}' : 'As';
+
+    return _chartCard(NorthChartPainter(labels, ascSign));
+  }
+
+  Widget _chartCard(CustomPainter painter) {
+    return GlassCard(
+      fill: AppColors.surfaceRaised,
+      fillOpacity: 0.5,
+      radius: AppRadius.md,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: AspectRatio(aspectRatio: 1, child: CustomPaint(painter: painter)),
+    );
+  }
+
+  Widget _kpChartPlaceholder() {
+    return GlassCard(
+      fill: AppColors.surfaceRaised,
+      fillOpacity: 0.5,
+      radius: AppRadius.md,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: const AspectRatio(aspectRatio: 1, child: LoadingView(height: null)),
+    );
+  }
+
+  /// Planet | A | B | C | D. Its own table rather than a KpTable: that one is
+  /// built around the lordship chain's fixed `Degree | SL | NL | SB | SS`
+  /// columns, and these five carry different content and widths.
+  Widget _significatorTable(List<dynamic> rows) {
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      radius: AppRadius.md,
+      child: Column(
+        children: [
+          _sigRow(
+            const [
+              'PLANET',
+              'STAR LORD OCCUPIES',
+              'STAR LORD OWNS',
+              'PLANET OCCUPIES',
+              'PLANET OWNS',
+            ],
+            isHeader: true,
+          ),
+          for (var i = 0; i < rows.length; i++)
+            if (rows[i] is Map<String, dynamic>)
+              _sigRow(
+                [
+                  kpAbbreviation((rows[i] as Map<String, dynamic>)['planet'] as String),
+                  _houses((rows[i] as Map<String, dynamic>)['starLordOccupies']),
+                  _houses((rows[i] as Map<String, dynamic>)['starLordOwns']),
+                  _houses((rows[i] as Map<String, dynamic>)['occupies']),
+                  _houses((rows[i] as Map<String, dynamic>)['owns']),
+                ],
+                last: i == rows.length - 1,
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sigRow(List<String> cells, {bool isHeader = false, bool last = false}) {
+    Widget cell(int i, int flex) => Expanded(
+          flex: flex,
+          child: Text(
+            cells[i],
+            style: isHeader
+                ? AppText.sans(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    color: AppColors.textPrimary.withValues(alpha: 0.4),
+                    letterSpacing: 0.8)
+                : AppText.sans(
+                    size: 12,
+                    color: i == 0 ? AppColors.gold : AppColors.textPrimary,
+                    weight: i == 0 ? FontWeight.w600 : FontWeight.w400),
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: 14),
+      decoration: BoxDecoration(
+        color: isHeader ? AppColors.textPrimary.withValues(alpha: 0.02) : null,
+        border: last
+            ? null
+            : Border(
+                bottom: BorderSide(
+                    color: AppColors.textPrimary.withValues(alpha: 0.05))),
+      ),
+      child: Row(children: [
+        cell(0, 4),
+        cell(1, 5),
+        cell(2, 5),
+        cell(3, 5),
+        cell(4, 5),
+      ]),
+    );
+  }
+
+  /// An empty level is meaningful in KP — the planet signifies nothing there —
+  /// so it shows a dash rather than blank space that reads as missing data.
+  static String _houses(dynamic list) {
+    final houses = (list as List?)?.cast<int>() ?? const <int>[];
+    return houses.isEmpty ? '—' : houses.join(', ');
   }
 
   static final _mockPlanetRows = <KpTableRow>[
@@ -1403,8 +1568,9 @@ KpTableRow _kpRow(Map<String, dynamic> e, {required String label}) {
 /// every KP table rather than assumed.
 Widget _kpLegend() {
   return Text(
-    'SL — Sign Lord   ·   NL — Nakshatra Lord\n'
-    'SB — Sub Lord   ·   SS — Sub-Sub Lord   ·   (R) retrograde\n'
+    // The column headers spell the lords out now, so this no longer expands
+    // abbreviations — it carries only what the table itself can't say.
+    'Swipe the table sideways for the remaining lords.   ·   (R) retrograde\n'
     'Positions use the KP (Krishnamurti) ayanamsa, not Lahiri — so these '
     'degrees differ slightly from the other Kundli tabs by design.',
     style: AppText.sans(size: 11, color: AppColors.textMuted, height: 1.6),
@@ -1471,7 +1637,7 @@ class _CuspTab extends StatelessWidget {
           const SectionLabel('CUSPS'),
           const SizedBox(height: AppSpacing.md),
           KpTable(
-            firstColumnLabel: 'Hos',
+            firstColumnLabel: 'House',
             rows: [
               if (cusps != null)
                 for (final c in cusps)
@@ -1553,209 +1719,3 @@ class _CuspTab extends StatelessWidget {
   ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Doshas tab — Mangal Dosha, Kaal Sarp Dosha (natal), Sade Sati (transit).
-// Wired to GET /doshas (own chart) or the doshas POST /chart/compute already
-// returned (a friend/family profile) — see DoshaEndpoints.cs/DoshaService.cs.
-// Pitra Dosha is deliberately absent: no single classical rule for it is
-// settled enough to compute as fact — that stays an Ask Jay question.
-// ─────────────────────────────────────────────────────────────────────────────
-class _DoshaTab extends StatelessWidget {
-  const _DoshaTab({this.doshas});
-
-  final Map<String, dynamic>? doshas;
-
-  static const _monthsShort = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
-  String _formatDate(String isoDate) {
-    final parts = isoDate.split('-');
-    final month = _monthsShort[int.parse(parts[1]) - 1];
-    return '${int.parse(parts[2])} $month ${parts[0]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (doshas == null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: AppSpacing.xxl),
-        child: Center(
-          child: Text('Save your birth details first to see your doshas.',
-              textAlign: TextAlign.center, style: AppText.body),
-        ),
-      );
-    }
-
-    final mangal = doshas!['mangal'] as Map<String, dynamic>;
-    final kaalSarp = doshas!['kaalSarp'] as Map<String, dynamic>;
-    final sadeSati = doshas!['sadeSati'] as Map<String, dynamic>;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Doshas', style: AppText.serif(size: 22, color: AppColors.textPrimary)),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          'Classical placement checks — Mangal Dosha and Kaal Sarp Dosha from '
-          'your birth chart, Sade Sati from where Saturn is transiting today.',
-          style: AppText.sans(size: 13, color: AppColors.textMuted, height: 1.5),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        _mangalCard(mangal),
-        const SizedBox(height: AppSpacing.lg),
-        _kaalSarpCard(kaalSarp),
-        const SizedBox(height: AppSpacing.lg),
-        _sadeSatiCard(sadeSati),
-        const SizedBox(height: AppSpacing.lg),
-        Text(
-          'Pitra Dosha isn\'t shown here — classical texts don\'t agree on a single '
-          'rule for it, so it stays a question for Ask Jay rather than an automated flag.',
-          style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
-        ),
-      ],
-    );
-  }
-
-  Widget _statusHeader(bool isPresent, String presentLabel, String absentLabel) {
-    return Row(
-      children: [
-        IconChip(
-          child: Icon(isPresent ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-              size: 18, color: isPresent ? AppColors.amber : AppColors.success),
-        ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Text(isPresent ? presentLabel : absentLabel,
-              style: AppText.serif(size: 18, weight: FontWeight.w600)),
-        ),
-      ],
-    );
-  }
-
-  Widget _mangalCard(Map<String, dynamic> mangal) {
-    final fromLagna = mangal['fromLagna'] as bool?;
-    final fromMoon = mangal['fromMoon'] as bool;
-    final fromVenus = mangal['fromVenus'] as bool;
-    final marsDignified = mangal['marsInOwnOrExaltedSign'] as bool;
-    final isManglik = fromLagna ?? (fromMoon || fromVenus);
-
-    return GlassCard(
-      goldTopBorder: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _statusHeader(isManglik, 'Manglik', 'Not Manglik'),
-          const SizedBox(height: AppSpacing.lg),
-          if (fromLagna == null)
-            Text(
-              'Birth time unknown — the Lagna-based check (the primary one) needs an '
-              'exact time. Shown below are the Moon- and Venus-based checks only.',
-              style: AppText.sans(size: 12, color: AppColors.textMuted, height: 1.5),
-            )
-          else
-            _doshaRow('From Lagna', fromLagna, 'House ${mangal['houseFromLagna']}'),
-          const SizedBox(height: AppSpacing.sm),
-          _doshaRow('From Moon', fromMoon, 'House ${mangal['houseFromMoon']}'),
-          const SizedBox(height: AppSpacing.sm),
-          _doshaRow('From Venus', fromVenus, 'House ${mangal['houseFromVenus']}'),
-          if (marsDignified) ...[
-            const SizedBox(height: AppSpacing.lg),
-            Container(height: 1, color: AppColors.borderFaint),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              'Mars sits in its own or exalted sign here — classically this is the most '
-              'commonly cited condition that weakens or cancels the dosha.',
-              style: AppText.sans(size: 12, color: AppColors.amber, height: 1.5),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _kaalSarpCard(Map<String, dynamic> kaalSarp) {
-    final isPresent = kaalSarp['isPresent'] as bool;
-    final subType = kaalSarp['subType'] as String?;
-    final rahuHouse = kaalSarp['rahuHouseFromLagna'] as int?;
-
-    return GlassCard(
-      goldTopBorder: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _statusHeader(isPresent, 'Kaal Sarp Dosha Present', 'No Kaal Sarp Dosha'),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            isPresent
-                ? (subType != null
-                    ? '$subType Kaal Sarp — Rahu sits in house $rahuHouse from your Lagna, with '
-                        'all seven other grahas hemmed to one side of the Rahu-Ketu axis.'
-                    : 'All seven other grahas are hemmed to one side of the Rahu-Ketu axis. '
-                        '(The named sub-type needs a known birth time.)')
-                : 'Not all planets fall on one side of the Rahu-Ketu axis.',
-            style: AppText.sans(size: 13, color: AppColors.textCream, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sadeSatiCard(Map<String, dynamic> sadeSati) {
-    final isActive = sadeSati['isActive'] as bool;
-    final phase = sadeSati['phase'] as String?;
-
-    return GlassCard(
-      goldTopBorder: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _statusHeader(isActive, 'Sade Sati Active${phase != null ? " — $phase Phase" : ""}',
-              'Sade Sati Not Active'),
-          if (isActive) ...[
-            const SizedBox(height: AppSpacing.lg),
-            _doshaDateRow('Phase started', sadeSati['phaseStartedOn'] as String),
-            const SizedBox(height: AppSpacing.sm),
-            _doshaDateRow('Phase ends', sadeSati['phaseEndsOn'] as String),
-            const SizedBox(height: AppSpacing.sm),
-            _doshaDateRow('Full cycle ends', sadeSati['fullCycleEndsOn'] as String),
-          ] else ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Transiting Saturn is not currently in the sign before, the same as, or '
-              'after your natal Moon.',
-              style: AppText.sans(size: 13, color: AppColors.textCream, height: 1.5),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _doshaRow(String label, bool present, String detail) {
-    return Row(
-      children: [
-        Icon(present ? Icons.circle : Icons.circle_outlined,
-            size: 8, color: present ? AppColors.amber : AppColors.textMuted),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: Text(label, style: AppText.sans(size: 13, color: AppColors.textCream)),
-        ),
-        Text(detail, style: AppText.sans(size: 12, color: AppColors.textMuted)),
-      ],
-    );
-  }
-
-  Widget _doshaDateRow(String label, String isoDate) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(label, style: AppText.sans(size: 13, color: AppColors.textMuted)),
-        ),
-        Text(_formatDate(isoDate),
-            style: AppText.sans(size: 13, weight: FontWeight.w600, color: AppColors.gold)),
-      ],
-    );
-  }
-}

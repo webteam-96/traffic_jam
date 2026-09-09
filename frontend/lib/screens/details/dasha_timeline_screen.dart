@@ -27,6 +27,15 @@ DateTime _parseUtc(String iso) {
   return utc.toLocal();
 }
 
+/// dd-MM-yyyy, zero-padded. A Dasha boundary is a specific instant, not a
+/// vague year: a Mahadasha that ran "1994 – 2011" told you nothing about when
+/// in 2011 it handed over, and the handover date is the thing people plan
+/// around.
+String _dateDmy(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.year}';
+
 double _elapsedFraction(DateTime start, DateTime end) {
   final total = end.difference(start).inMilliseconds;
   if (total <= 0) return 1.0;
@@ -173,7 +182,7 @@ class _TimelineEntry extends StatelessWidget {
   DateTime get _end => _parseUtc(maha['end'] as String);
   bool get _done => !_active && _end.isBefore(DateTime.now());
   String get _lord => maha['lord'] as String;
-  String get _range => '${_start.year} – ${_end.year}';
+  String get _range => '${_dateDmy(_start)} to ${_dateDmy(_end)}';
   String get _years => '${_end.year - _start.year} yrs';
 
   @override
@@ -376,7 +385,7 @@ class _AntaRow extends StatelessWidget {
   DateTime get _end => _parseUtc(anta['end'] as String);
   bool get _done => !_active && _end.isBefore(DateTime.now());
   String get _lord => anta['lord'] as String;
-  String get _range => '${_start.year} – ${_end.year}';
+  String get _range => '${_dateDmy(_start)} to ${_dateDmy(_end)}';
 
   @override
   Widget build(BuildContext context) {

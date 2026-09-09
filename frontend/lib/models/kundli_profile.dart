@@ -18,7 +18,6 @@ class KundliProfile {
     required this.generatedOn,
     this.chart,
     this.dasha,
-    this.doshas,
   });
 
   final String id;
@@ -31,7 +30,6 @@ class KundliProfile {
   final String generatedOn;
   final Map<String, dynamic>? chart;
   final Map<String, dynamic>? dasha;
-  final Map<String, dynamic>? doshas;
 
   static const own = KundliProfile(
     id: 'own',
