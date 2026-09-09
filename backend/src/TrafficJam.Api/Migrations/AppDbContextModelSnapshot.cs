@@ -87,8 +87,17 @@ namespace TrafficJam.Api.Migrations
                     b.Property<TimeOnly>("PreferredTime")
                         .HasColumnType("time(6)");
 
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("SlotId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Timezone")
                         .HasColumnType("longtext");
 
                     b.Property<Guid>("UserId")
@@ -96,9 +105,152 @@ namespace TrafficJam.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SlotId")
+                        .IsUnique()
+                        .HasFilter("`SlotId` IS NOT NULL");
+
                     b.HasIndex("UserId");
 
                     b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AppointmentSlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartsAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartsAt");
+
+                    b.ToTable("AppointmentSlots");
+                });
+
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AstrologerProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Bio")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Expertise")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ImageDataUri")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Philosophy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AstrologerProfile");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a57e10c9-0000-4000-8000-000000000001"),
+                            Bio = "Jay Kotecha is a practicing Vedic astrologer with over 18 years of experience guiding individuals and businesses through life's critical intersections. Trained in the traditional guru-shishya parampara under the lineage of Pt. Sanjay Rath, he holds advanced certifications in Jaimini Sutras, Prashna (horary), and KP (Krishnamurti Paddhati) systems.\nBefore dedicating himself fully to Jyotish, Jay spent a decade in corporate finance and strategy consulting — an experience that grounds his readings in practical decision-making rather than abstract prediction. He has served clients across 22 countries and is a regular contributor to leading wellness platforms.\nJay founded TrafficJam.Life to democratize access to authentic, birth-chart-level guidance — moving astrology from entertainment to a daily decision engine for the modern seeker.",
+                            Expertise = "Vedic Astrology (Parashara)\nKP System (Krishnamurti Paddhati)\nPrashna / Horary Astrology\nRemedial Astrology (Mantra, Yantra, Dana)\nFinancial & Business Astrology\nRelationship & Compatibility Analysis\nMuhurat / Electional Astrology\nNakshatra & Dasha Deep-Dives",
+                            Name = "Jay Kotecha",
+                            Philosophy = "Astrology is a compass, not a verdict. The planets show the weather; you choose the path. My role is to read the sky clearly so you can walk with confidence — whether the signal is green, yellow, or red.",
+                            Title = "Founder & Chief Astrologer",
+                            UpdatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AstrologerReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Author")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ModeratedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Quote")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AstrologerReviews");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a57e10c9-0000-4000-8000-000000000101"),
+                            Author = "Rohan M., Software Architect",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Quote = "Jay's reading on my Saturn return timing was uncannily precise. He identified the exact month my career would pivot — and it did.",
+                            SortOrder = 0,
+                            Status = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("a57e10c9-0000-4000-8000-000000000102"),
+                            Author = "Anjali S., Entrepreneur",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Quote = "The remedy suggestions were practical, not ritualistic. Drinking water from a copper vessel during my Mars transit genuinely shifted my energy.",
+                            SortOrder = 1,
+                            Status = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("a57e10c9-0000-4000-8000-000000000103"),
+                            Author = "Vikram P., Founder",
+                            CreatedAt = new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Quote = "Business Muhurat for our Series A close — we timed the term sheet signing to Abhijit Muhurat. Round oversubscribed in 48 hours.",
+                            SortOrder = 2,
+                            Status = 1
+                        });
                 });
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.BirthData", b =>
@@ -171,6 +323,9 @@ namespace TrafficJam.Api.Migrations
                     b.Property<string>("D9Json")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<int>("EngineVersion")
+                        .HasColumnType("int");
 
                     b.Property<string>("KpJson")
                         .IsRequired()
@@ -304,6 +459,43 @@ namespace TrafficJam.Api.Migrations
                     b.ToTable("Devices");
                 });
 
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.EmailOtp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmailHash", "ConsumedAt");
+
+                    b.ToTable("EmailOtps");
+                });
+
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -377,6 +569,9 @@ namespace TrafficJam.Api.Migrations
                     b.Property<string>("ChannelsJson")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<bool>("Chat")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("Dasha")
                         .HasColumnType("tinyint(1)");
@@ -903,6 +1098,12 @@ namespace TrafficJam.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Email")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("EmailHash")
+                        .HasColumnType("varchar(255)");
+
                     b.Property<string>("FirebaseUid")
                         .IsRequired()
                         .HasColumnType("varchar(255)");
@@ -918,6 +1119,10 @@ namespace TrafficJam.Api.Migrations
                         .HasColumnType("varchar(255)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EmailHash")
+                        .IsUnique()
+                        .HasFilter("`EmailHash` IS NOT NULL");
 
                     b.HasIndex("FirebaseUid")
                         .IsUnique();
@@ -956,11 +1161,27 @@ namespace TrafficJam.Api.Migrations
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.Appointment", b =>
                 {
+                    b.HasOne("TrafficJam.Api.Data.Entities.AppointmentSlot", "Slot")
+                        .WithOne("Appointment")
+                        .HasForeignKey("TrafficJam.Api.Data.Entities.Appointment", "SlotId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TrafficJam.Api.Data.Entities.User", "User")
                         .WithMany("Appointments")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Slot");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AstrologerReview", b =>
+                {
+                    b.HasOne("TrafficJam.Api.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId");
 
                     b.Navigation("User");
                 });
@@ -1095,6 +1316,11 @@ namespace TrafficJam.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TrafficJam.Api.Data.Entities.AppointmentSlot", b =>
+                {
+                    b.Navigation("Appointment");
                 });
 
             modelBuilder.Entity("TrafficJam.Api.Data.Entities.Question", b =>
