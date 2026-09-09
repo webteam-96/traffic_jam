@@ -174,7 +174,8 @@ class GoldButton extends StatelessWidget {
   }
 }
 
-/// Label + percentage + gold gradient progress bar (Celestial Vibe Meter).
+/// Label + percentage + gold gradient progress bar. Used by the Dasha
+/// timeline, Traffic Signal and Planet Strengths screens.
 class MeterBar extends StatelessWidget {
   const MeterBar({
     super.key,

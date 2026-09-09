@@ -30,7 +30,7 @@ class AppColors {
   static const Color goldButton = Color(0xFFFFB300); // primary button fill
   static const Color goldLight = Color(0xFFFFD154);
   static const Color goldLighter = Color(0xFFFFE082);
-  static const Color orange = Color(0xFFFB923C); // vibe-meter gradient end
+  static const Color orange = Color(0xFFFB923C); // upcoming-transit severity
 
   // Text
   static const Color textPrimary = Color(0xFFF5F5F7); // near-white headings/body

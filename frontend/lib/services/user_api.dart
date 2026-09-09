@@ -51,6 +51,7 @@ class UserApi {
     required bool events,
     required bool dasha,
     required bool remedies,
+    required bool chat,
     required Map<String, List<String>> channels,
   }) {
     return ApiClient.put('/me/notification-preferences', body: {
@@ -59,6 +60,7 @@ class UserApi {
       'events': events,
       'dasha': dasha,
       'remedies': remedies,
+      'chat': chat,
       'channels': channels,
     });
   }

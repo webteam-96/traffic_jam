@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/widgets.dart';
 import '../../theme/app_theme.dart';
-import '../../nav.dart';
 import '../../services/chart_api.dart';
 
 class _PlanetColor {
@@ -145,13 +144,6 @@ class _ColorOfDayScreenState extends State<ColorOfDayScreen> {
           ),
           const SizedBox(height: AppSpacing.section),
           _whyCard(why, today),
-          const SizedBox(height: AppSpacing.section),
-          GoldButton(
-            label: 'Share',
-            outlined: true,
-            icon: Icons.share,
-            onPressed: () => toast(context, 'Shared to your story'),
-          ),
         ],
       ),
     );

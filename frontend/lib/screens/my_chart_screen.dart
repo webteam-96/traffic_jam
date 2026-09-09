@@ -157,18 +157,15 @@ class _MyChartScreenState extends State<MyChartScreen> {
                     style:
                         AppText.serif(size: 32, color: AppColors.textPrimary, height: 48 / 32)),
               ),
-              _IconButtonBox(
-                icon: Icons.ios_share,
-                iconColor: AppColors.textPrimary,
-                borderColor: AppColors.gold.withValues(alpha: 0.2),
-                onTap: () => toast(context, 'Chart shared'),
-              ),
-              const SizedBox(width: AppSpacing.sm),
+              // Both buttons here used to be toasts — "Chart shared" and
+              // "Chart downloaded" with nothing behind either. The share is
+              // gone; the download opens the Kundli, where the real PDF
+              // export lives.
               _IconButtonBox(
                 icon: Icons.file_download_outlined,
                 iconColor: AppColors.navBarBase,
                 fill: AppColors.gold,
-                onTap: () => toast(context, 'Chart downloaded'),
+                onTap: () => goToKundli(context),
               ),
             ],
           ),
@@ -577,14 +574,12 @@ class _IconButtonBox extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     this.fill,
-    this.borderColor,
     this.onTap,
   });
 
   final IconData icon;
   final Color iconColor;
   final Color? fill;
-  final Color? borderColor;
   final VoidCallback? onTap;
 
   @override
@@ -598,7 +593,6 @@ class _IconButtonBox extends StatelessWidget {
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: borderColor != null ? Border.all(color: borderColor!) : null,
         ),
         child: Icon(icon, size: 15, color: iconColor),
       ),

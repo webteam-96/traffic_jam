@@ -19,10 +19,6 @@ class Assets {
   static const navProfile = '63db53386953a9525fc47c94448712389f3faf11.svg';
 
   // Home — action hub (2x2)
-  static const iconKundli = 'bac51b087919aca875173b486b37985133b23d06.svg';
-  static const iconPanchangAction = '78d62b6f4556619f5cf45ac23f99af07bb3f50ff.svg';
-  static const iconNotifications = '113f6affeeed41b624ec8933b0e23da291b13e20.svg';
-  static const iconCleanupTransits = 'fb57b3dbcbfaf6cf0b1961a1c62b642d074817db.svg';
 
   // Home — Today's Panchang calendar glyph
   static const iconCalendar = '7dd64fdd48addc9d45bf2d952ec43cbd0e3ed6eb.svg';

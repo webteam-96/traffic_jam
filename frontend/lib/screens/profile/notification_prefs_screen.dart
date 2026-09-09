@@ -25,18 +25,23 @@ class _NotificationPrefsScreenState extends State<NotificationPrefsScreen> {
     _Pref('dasha', 'Dasha Reminders', 'When a planetary period shifts', Icons.timeline),
     _Pref('remedies', 'Remedy Reminders', 'Nudges for your prescribed remedies',
         Icons.spa_outlined),
+    _Pref('chat', "Jay's Replies", 'When your question gets an answer',
+        Icons.chat_bubble_outline),
   ];
 
   // Fallback defaults for a category the backend hasn't stored channels for yet.
   static const _defaultChannels = <String, Set<String>>{
     'morning': {'Push'},
-    'rahuKaal': {'Push', 'WhatsApp'},
+    'rahuKaal': {'Push'},
     'events': {'Push'},
     'dasha': {'Push', 'Email'},
     'remedies': {'Push'},
+    'chat': {'Push'},
   };
 
-  static const _allChannels = ['Push', 'Email', 'WhatsApp'];
+  // WhatsApp isn't integrated, so it isn't offered. Push and Email are
+  // the two this project can actually deliver on once a provider exists.
+  static const _allChannels = ['Push', 'Email'];
 
   final Map<String, bool> _on = {};
   final Map<String, Set<String>> _channels = {};
@@ -89,6 +94,7 @@ class _NotificationPrefsScreenState extends State<NotificationPrefsScreen> {
         events: _on['events']!,
         dasha: _on['dasha']!,
         remedies: _on['remedies']!,
+        chat: _on['chat']!,
         channels: {for (final p in _prefs) p.key: _channels[p.key]!.toList()},
       );
       if (!mounted) return;

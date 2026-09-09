@@ -20,8 +20,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _midnight = true; // Midnight Interface toggle (ON in design)
-
   Map<String, dynamic>? _birthData;
   bool _loadingBirthData = true;
 
@@ -87,9 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 
   static const _pencil = '886850b078134c9b8ae9ce201d82a869e8c8f2f9.svg';
-  static const _moon = '22d29c31a70b0fb74b73605430ebb2d05311368d.svg';
   static const _bell = '03f2afc3d9eee530098fc24f30074b64e0a7359d.svg';
-  static const _globe = 'd3c89ffb0ca10903a70d11b119aff787da10b7e7.svg';
   static const _shield = '6f429ace2c21e13233e1fcb115b790a320d63ccd.svg';
   static const _chevron = 'c28676dbdebabd45a223947f18fdeee4acc0cf0b.svg';
   static const _map = '10eb677e2022303a2d9ca18587fd944068344b9a.png';
@@ -334,14 +330,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Text('System Preferences', style: AppText.headingSerif),
                 const SizedBox(height: AppSpacing.xxl),
-                _prefRow(
-                  icon: _moon,
-                  iconColor: AppColors.amber,
-                  title: 'Midnight Interface',
-                  subtitle: 'Default dark cosmic view',
-                  trailing: _switch(),
-                ),
-                _divider(),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => goToNotificationPrefs(context),
@@ -352,14 +340,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     trailing: const SvgIcon(_chevron,
                         width: 7.4, height: 12, color: AppColors.textMuted),
                   ),
-                ),
-                _divider(),
-                _prefRow(
-                  icon: _globe,
-                  title: 'Dialect',
-                  subtitle: 'English (Global)',
-                  trailing: const SvgIcon(_chevron,
-                      width: 7.4, height: 12, color: AppColors.textMuted),
                 ),
                 _divider(),
                 GestureDetector(
@@ -483,33 +463,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: AppColors.surfaceRaised2,
       );
 
-  Widget _switch() => GestureDetector(
-        onTap: () => setState(() => _midnight = !_midnight),
-        child: Container(
-          width: 48,
-          height: 24,
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color:
-                _midnight ? AppColors.gold : AppColors.surfaceRaised2,
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-          ),
-          child: AnimatedAlign(
-            duration: const Duration(milliseconds: 150),
-            alignment:
-                _midnight ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                color:
-                    _midnight ? AppColors.navBarBase : AppColors.textTan,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ),
-      );
 
   Widget _logoutButton() => GestureDetector(
         behavior: HitTestBehavior.opaque,
