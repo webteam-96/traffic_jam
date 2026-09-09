@@ -18,6 +18,11 @@ class BookAppointmentScreen extends StatefulWidget {
   State<BookAppointmentScreen> createState() => _BookAppointmentScreenState();
 }
 
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   static const _areas = [
     'Career',
@@ -32,8 +37,19 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   final _message = TextEditingController();
   DateTime? _preferredDate;
   TimeOfDay? _preferredTime;
+
+  /// The astrologer's published slots, already filtered server-side to the
+  /// free future ones — a slot someone else has taken never reaches here.
+  List<Map<String, dynamic>>? _slots;
+  String? _selectedSlotId;
+  bool _loadingSlots = true;
   bool _consent = false;
   bool _submitting = false;
+
+  /// True while the reader is proposing their own time instead of taking a
+  /// published slot. That path is a request, not a booking — the astrologer
+  /// has to agree to it.
+  bool _askingForOwnTime = false;
   final _formKey = GlobalKey<FormState>();
 
   String? _name;
@@ -42,6 +58,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSlots();
     UserApi.getBirthData().then((data) {
       if (!mounted) return;
       setState(() {
@@ -128,36 +145,35 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // ── Preferred Date & Time ────────────────────────────────────
+            // ── Pick a slot, or ask for your own time ────────────────────
             GlassCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionLabel('PREFERRED DATE & TIME'),
+                  const SectionLabel('CHOOSE A TIME'),
                   const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _DatePickerField(
-                          label: 'Date',
-                          value: _preferredDate != null
-                              ? '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}'
-                              : 'Select date',
-                          onTap: _pickDate,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _DatePickerField(
-                          label: 'Time',
-                          value: _preferredTime != null
-                              ? _preferredTime!.format(context)
-                              : 'Select time',
-                          onTap: _pickTime,
+                  if (_loadingSlots)
+                    const LoadingView(height: null)
+                  else ...[
+                    if (!_askingForOwnTime) ..._slotPicker(),
+                    if (_askingForOwnTime) ..._ownTimePicker(),
+                    if ((_slots ?? []).isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() {
+                          _askingForOwnTime = !_askingForOwnTime;
+                          _selectedSlotId = null;
+                        }),
+                        child: Text(
+                          _askingForOwnTime
+                              ? 'Pick from available slots instead'
+                              : "None of these work? Suggest your own time",
+                          style: AppText.sans(size: 13, color: AppColors.gold),
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -366,8 +382,138 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     if (picked != null) setState(() => _preferredTime = picked);
   }
 
+  /// The published slots, grouped by day and rendered in the reader's own
+  /// timezone — the API sends UTC instants precisely so this can.
+  List<Widget> _slotPicker() {
+    final slots = _slots ?? [];
+    if (slots.isEmpty) {
+      return [
+        Text('No slots are open right now — suggest a time below and Jay will confirm.',
+            style: AppText.bodySmall),
+      ];
+    }
+
+    final byDay = <String, List<Map<String, dynamic>>>{};
+    for (final slot in slots) {
+      final local = DateTime.parse(slot['startsAt'] as String).toLocal();
+      final day = '${_weekdays[local.weekday - 1]}, ${local.day} ${_months[local.month - 1]}';
+      byDay.putIfAbsent(day, () => []).add(slot);
+    }
+
+    return [
+      for (final entry in byDay.entries) ...[
+        Text(entry.key,
+            style: AppText.sans(
+                size: 12, weight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 0.6)),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final slot in entry.value) _slotChip(slot),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+      ],
+    ];
+  }
+
+  Widget _slotChip(Map<String, dynamic> slot) {
+    final id = slot['id'] as String;
+    final local = DateTime.parse(slot['startsAt'] as String).toLocal();
+    final selected = _selectedSlotId == id;
+    final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final label =
+        '$hour12:${local.minute.toString().padLeft(2, '0')} ${local.hour < 12 ? 'AM' : 'PM'}';
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        _selectedSlotId = selected ? null : id;
+        // Kept in step so the request carries a readable date and time
+        // alongside the slot id.
+        _preferredDate = DateTime(local.year, local.month, local.day);
+        _preferredTime = TimeOfDay(hour: local.hour, minute: local.minute);
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.gold : AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(
+              color: selected ? AppColors.gold : AppColors.borderSoft),
+        ),
+        child: Text(
+          label,
+          style: AppText.sans(
+              size: 14,
+              weight: selected ? FontWeight.w700 : FontWeight.w400,
+              color: selected ? AppColors.textOnGold : AppColors.textPrimary),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _ownTimePicker() => [
+        Text(
+          "Jay has to agree to a time outside the published slots, so this is a "
+          'request rather than a booking.',
+          style: AppText.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Expanded(
+              child: _DatePickerField(
+                label: 'Date',
+                value: _preferredDate != null
+                    ? '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}'
+                    : 'Select date',
+                onTap: _pickDate,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: _DatePickerField(
+                label: 'Time',
+                value: _preferredTime != null
+                    ? _preferredTime!.format(context)
+                    : 'Select time',
+                onTap: _pickTime,
+              ),
+            ),
+          ],
+        ),
+      ];
+
+  Future<void> _loadSlots() async {
+    try {
+      final slots = await ConsultApi.getAppointmentSlots();
+      if (!mounted) return;
+      setState(() {
+        _slots = slots;
+        _loadingSlots = false;
+        // Nothing published means there is nothing to pick from, so the
+        // "suggest your own time" path is the only one that makes sense.
+        _askingForOwnTime = slots.isEmpty;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _slots = [];
+        _loadingSlots = false;
+        _askingForOwnTime = true;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_askingForOwnTime && _selectedSlotId == null) {
+      toast(context, 'Pick a slot, or suggest your own time.');
+      return;
+    }
     if (_preferredDate == null || _preferredTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Please select a date and time',
@@ -387,9 +533,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         preferredDate: _preferredDate!,
         preferredHour24: _preferredTime!.hour,
         preferredMinute: _preferredTime!.minute,
+        slotId: _askingForOwnTime ? null : _selectedSlotId,
+        // The zone the reader was looking at when they picked. Without it a
+        // request for "3 PM" is ambiguous on the astrologer's side.
+        timezone: DateTime.now().timeZoneName,
       );
       if (!mounted) return;
-      _showConfirmation(result['reference'] as String);
+      _showConfirmation(
+        result['reference'] as String,
+        confirmed: result['status'] == 'Confirmed',
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       toast(context, e.message);
@@ -401,20 +554,27 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
   }
 
-  void _showConfirmation(String reference) {
+  /// Two outcomes, said differently: booking a published slot is done, while
+  /// asking for your own time is a request the astrologer still has to accept.
+  /// Telling both "our team will contact you" would leave someone with a
+  /// confirmed appointment waiting for a call that isn't coming.
+  void _showConfirmation(String reference, {required bool confirmed}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-        title: Text('Request Submitted', style: AppText.serif(size: 22)),
+        title: Text(confirmed ? 'Appointment Booked' : 'Request Submitted',
+            style: AppText.serif(size: 22)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Your consultation request has been received.',
+              confirmed
+                  ? 'Your slot is confirmed. See you then.'
+                  : 'Your consultation request has been received.',
               style: AppText.body,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -424,7 +584,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Our team will contact you to schedule your session.',
+              confirmed
+                  ? "We'll be in touch with joining details before your session."
+                  : 'Jay will confirm whether that time works and get back to you.',
               style: AppText.bodySmall,
             ),
           ],

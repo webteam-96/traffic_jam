@@ -7,9 +7,13 @@ namespace TrafficJam.Api.Modules.Admin;
 public record AdminAppointmentSummary(
     Guid Id, Guid UserId, string? UserName, string Area, string Email, string? Message,
     DateOnly PreferredDate, TimeOnly PreferredTime, string Status, DateTime CreatedAt,
+    DateTime? ScheduledAt, string? Timezone, bool FromSlot,
     string? BirthPlace, DateOnly? Dob, TimeOnly? Tob, bool? UnknownTime);
 
 public record AdminUpdateAppointmentStatusRequest(string Status);
+
+/// <summary>A published slot, and who has it.</summary>
+public record AdminAppointmentSlotRow(Guid Id, DateTime StartsAt, int DurationMinutes, bool IsBooked);
 
 public static class AdminAppointmentEndpoints
 {
@@ -43,6 +47,7 @@ public static class AdminAppointmentEndpoints
             var summaries = appointments.Select(a => new AdminAppointmentSummary(
                 a.Id, a.UserId, a.User.Name, a.Area, a.Email, a.Message,
                 a.PreferredDate, a.PreferredTime, a.Status.ToString(), a.CreatedAt,
+                a.ScheduledAt, a.Timezone, a.SlotId != null,
                 a.User.BirthData?.Place, a.User.BirthData?.Dob, a.User.BirthData?.Tob, a.User.BirthData?.UnknownTime));
 
             return Results.Ok(new { appointments = summaries, totalCount });
@@ -61,8 +66,52 @@ public static class AdminAppointmentEndpoints
             if (appointment is null) return Results.NotFound();
 
             appointment.Status = newStatus;
+
+            if (newStatus == AppointmentStatus.Cancelled)
+            {
+                // Releasing the slot is what makes cancellation mean anything
+                // — otherwise a cancelled booking holds that hour forever and
+                // nobody else can ever have it. ScheduledAt keeps the record
+                // of when it had been.
+                appointment.SlotId = null;
+            }
+            else if (newStatus == AppointmentStatus.Confirmed && appointment.ScheduledAt is null)
+            {
+                // Confirming a manual request is the astrologer agreeing to
+                // the time the user asked for — this is the moment it stops
+                // being a request. Interpreted in the user's own zone, since
+                // that is what they were reading when they picked it.
+                appointment.ScheduledAt = ToUtc(
+                    appointment.PreferredDate, appointment.PreferredTime, appointment.Timezone);
+            }
+
             await db.SaveChangesAsync(ct);
             return Results.Ok();
         }).RequireAuthorization("AdminOnly");
+    }
+
+    /// <summary>
+    /// The instant a user meant when they asked for a date and time, resolved
+    /// through the zone they were reading in. Falls back to treating it as UTC
+    /// when no zone was recorded — wrong by hours, but the alternative is
+    /// refusing to confirm an otherwise valid request.
+    /// </summary>
+    private static DateTime ToUtc(DateOnly date, TimeOnly time, string? timezone)
+    {
+        var local = date.ToDateTime(time);
+        if (string.IsNullOrWhiteSpace(timezone))
+        {
+            return DateTime.SpecifyKind(local, DateTimeKind.Utc);
+        }
+
+        try
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+            return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), tz);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return DateTime.SpecifyKind(local, DateTimeKind.Utc);
+        }
     }
 }

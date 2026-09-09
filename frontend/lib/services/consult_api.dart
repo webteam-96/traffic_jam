@@ -41,8 +41,19 @@ class ConsultApi {
     ) as Map<String, dynamic>;
   }
 
-  /// Books a consultation request — POST /consult/appointments. Returns
-  /// `{appointmentId, reference}`.
+  /// The slots the astrologer has published and nobody has taken. UTC — the
+  /// screen renders them in the reader's own zone.
+  static Future<List<Map<String, dynamic>>> getAppointmentSlots() async {
+    final data = await ApiClient.get('/consult/appointments/slots') as List;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  /// Books a consultation — POST /consult/appointments. Returns
+  /// `{appointmentId, reference, status}`.
+  ///
+  /// Pass [slotId] to take a published slot, which is confirmed on the spot.
+  /// Omit it to ask for a time of the user's own choosing, which stays Pending
+  /// until the astrologer agrees.
   static Future<Map<String, dynamic>> bookAppointment({
     required String area,
     required String email,
@@ -50,6 +61,8 @@ class ConsultApi {
     required DateTime preferredDate,
     required int preferredHour24,
     required int preferredMinute,
+    String? slotId,
+    String? timezone,
   }) async {
     return await ApiClient.post('/consult/appointments', body: {
       'area': area,
@@ -60,6 +73,8 @@ class ConsultApi {
           '${preferredDate.day.toString().padLeft(2, '0')}',
       'preferredTime': '${preferredHour24.toString().padLeft(2, '0')}:'
           '${preferredMinute.toString().padLeft(2, '0')}:00',
+      'slotId': ?slotId,
+      'timezone': ?timezone,
     }) as Map<String, dynamic>;
   }
 }

@@ -14,8 +14,19 @@ public record SendMessageRequest(string Text);
 public record MessageResponse(Guid Id, string Sender, string Text, DateTime CreatedAt);
 
 public record BookAppointmentRequest(
-    string Area, string Email, string? Message, DateOnly PreferredDate, TimeOnly PreferredTime);
-public record BookAppointmentResponse(Guid AppointmentId, string Reference);
+    string Area, string Email, string? Message, DateOnly PreferredDate, TimeOnly PreferredTime,
+    // Set to book a published slot; null to ask for a time of the user's own
+    // choosing, which the astrologer then has to agree to.
+    Guid? SlotId = null,
+    // IANA zone the user was reading times in, e.g. "Asia/Kolkata". Without
+    // it "3 PM" is ambiguous and the astrologer can't know which was meant.
+    string? Timezone = null);
+
+public record BookAppointmentResponse(Guid AppointmentId, string Reference, string Status);
+
+/// <summary>A free slot, as offered to the app. UTC — the client renders it in
+/// the reader's own zone.</summary>
+public record AppointmentSlotResponse(Guid Id, DateTime StartsAt, int DurationMinutes);
 
 public static class ConsultationEndpoints
 {
@@ -26,10 +37,30 @@ public static class ConsultationEndpoints
 
         var consult = app.MapGroup("/consult").RequireAuthorization();
 
-        // "Book Appointment" — Business Flow §9. Records the request as
-        // Pending; the admin panel (Modules/Admin/AdminAppointmentEndpoints.cs)
-        // is where staff see the queue and move it to Confirmed/Completed/
-        // Cancelled. The Reference lets the user look it up on their side.
+        // The slots the astrologer has published and nobody has taken.
+        //
+        // Free is derived from "no appointment points at it" rather than a
+        // flag, so a cancelled booking returns its slot here automatically.
+        // Past slots are excluded: an hour that has already gone is not
+        // available, whatever the table says.
+        consult.MapGet("/appointments/slots", async (AppDbContext db, CancellationToken ct) =>
+        {
+            var now = DateTime.UtcNow;
+            var slots = await db.AppointmentSlots
+                .Where(sl => sl.StartsAt > now && sl.Appointment == null)
+                .OrderBy(sl => sl.StartsAt)
+                .Select(sl => new AppointmentSlotResponse(sl.Id, sl.StartsAt, sl.DurationMinutes))
+                .ToListAsync(ct);
+
+            return Results.Ok(slots);
+        });
+
+        // "Book Appointment" — Business Flow §9.
+        //
+        // Booking a published slot is Confirmed on the spot: the astrologer
+        // published that hour, so there is nothing left to agree. Asking for
+        // your own time is Pending until they say yes. The admin panel
+        // (Modules/Admin/AdminAppointmentEndpoints.cs) is where that happens.
         consult.MapPost("/appointments", async (
             BookAppointmentRequest request, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
             CancellationToken ct) =>
@@ -42,12 +73,55 @@ public static class ConsultationEndpoints
                 Message = request.Message,
                 PreferredDate = request.PreferredDate,
                 PreferredTime = request.PreferredTime,
+                Timezone = request.Timezone,
             };
+
+            if (request.SlotId is Guid slotId)
+            {
+                var slot = await db.AppointmentSlots
+                    .Include(sl => sl.Appointment)
+                    .SingleOrDefaultAsync(sl => sl.Id == slotId, ct);
+
+                if (slot is null)
+                {
+                    return Results.NotFound(new { error = new { code = "NO_SUCH_SLOT", message = "That slot no longer exists." } });
+                }
+
+                if (slot.Appointment is not null || slot.StartsAt <= DateTime.UtcNow)
+                {
+                    // Someone else got there first, or the hour has passed
+                    // while this screen was open.
+                    return Results.Conflict(new
+                    {
+                        error = new { code = "SLOT_TAKEN", message = "That slot has just been taken. Please pick another." },
+                    });
+                }
+
+                appointment.SlotId = slot.Id;
+                appointment.ScheduledAt = slot.StartsAt;
+                appointment.Status = AppointmentStatus.Confirmed;
+            }
+
             db.Appointments.Add(appointment);
-            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // The unique index on SlotId caught a genuine race — two
+                // people booked the same slot between the check above and
+                // this write. The database is the arbiter; this one loses.
+                return Results.Conflict(new
+                {
+                    error = new { code = "SLOT_TAKEN", message = "That slot has just been taken. Please pick another." },
+                });
+            }
 
             var reference = $"TJ-{appointment.Id.ToString("N")[..8].ToUpperInvariant()}";
-            return Results.Ok(new BookAppointmentResponse(appointment.Id, reference));
+            return Results.Ok(new BookAppointmentResponse(
+                appointment.Id, reference, appointment.Status.ToString()));
         });
 
         consult.MapPost("/questions", async (
