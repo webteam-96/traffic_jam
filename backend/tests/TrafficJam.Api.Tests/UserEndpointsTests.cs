@@ -100,13 +100,14 @@ public class UserEndpointsTests : IClassFixture<TrafficJamApiFactory>, IAsyncLif
 
         var updateResponse = await client.PutAsJsonAsync("/me/notification-preferences",
             new NotificationPreferencesRequest(
-                Morning: false, RahuKaal: true, Events: true, Dasha: false, Remedies: true,
+                Morning: false, RahuKaal: true, Events: true, Dasha: false, Remedies: true, Chat: false,
                 Channels: new Dictionary<string, string[]> { ["morning"] = ["push", "whatsapp"] }));
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
 
         var updated = await client.GetFromJsonAsync<NotificationPreferencesResponse>("/me/notification-preferences");
         Assert.False(updated!.Morning);
         Assert.True(updated.Events);
+        Assert.False(updated.Chat); // round-trips like every other category
         Assert.Equal(["push", "whatsapp"], updated.Channels["morning"]);
     }
 

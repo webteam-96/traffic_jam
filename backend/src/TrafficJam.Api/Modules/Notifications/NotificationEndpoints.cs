@@ -14,9 +14,16 @@ public static class NotificationEndpoints
         var group = app.MapGroup("/notifications").RequireAuthorization();
 
         group.MapGet("/", async (
-            bool? unread, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+            bool? unread, System.Security.Claims.ClaimsPrincipal principal, AppDbContext db,
+            INotificationGenerator generator, CancellationToken ct) =>
         {
             var userId = principal.UserId();
+
+            // Fill the inbox before reading it. Nothing else writes
+            // notifications — there is no scheduler yet — so without this the
+            // table stays empty forever, which is exactly how it shipped.
+            await generator.EnsureAsync(userId, ct);
+
             var query = db.Notifications.Where(n => n.UserId == userId);
             if (unread == true) query = query.Where(n => !n.Read);
 
