@@ -13,9 +13,10 @@
   App Store lists this URL as the app's support contact, Apple's reviewers
   open it, and it has to render even if the admin bundle fails to load.
 
-  BEFORE DEPLOYING: replace SUPPORT_EMAIL_PLACEHOLDER (three occurrences)
-  with a mailbox that is actually monitored. Apple checks that this page
-  loads and that the contact route on it works.
+  BEFORE DEPLOYING: replace SUPPORT_EMAIL_PLACEHOLDER — one occurrence, the
+  footer's "Contact support" link — with a mailbox that is actually
+  monitored. Apple checks that this page loads and that the contact route on
+  it works, and the footer link is now the only contact route on it.
 -->
 <html lang="en">
 <head>
@@ -33,8 +34,6 @@
     --ground:     #faf9fc;
     --surface:    #ffffff;
     --gold:       #a97c12;
-    --gold-bg:    #fdf5e2;
-    --gold-border:#f0dfae;
     --navy:       #1a1f4d;
   }
 
@@ -85,21 +84,6 @@
   p:last-child { margin-bottom: 0; }
   a  { color: var(--gold); }
 
-  .contact {
-    background: var(--gold-bg);
-    border: 1px solid var(--gold-border);
-    border-radius: 10px;
-    padding: 1.4rem 1.5rem;
-  }
-  .contact .email {
-    display: inline-block;
-    margin: .3rem 0 .6rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    word-break: break-all;
-  }
-  .contact .small { color: var(--muted); font-size: .92rem; margin: 0; }
-
   .faq {
     background: var(--surface);
     border: 1px solid var(--rule);
@@ -141,23 +125,11 @@
 <main>
 
   <section>
-    <h2>Get in touch</h2>
-    <div class="contact">
-      <p class="small">Email us and we'll reply within two working days.</p>
-      <a class="email" href="mailto:SUPPORT_EMAIL_PLACEHOLDER">SUPPORT_EMAIL_PLACEHOLDER</a>
-      <p class="small">
-        It helps to include the mobile number your account uses and, if you're
-        writing about a reading, the name on the chart.
-      </p>
-    </div>
-  </section>
-
-  <section>
     <h2>About the app</h2>
     <p>
       TrafficJam.Life is a Vedic astrology app. It casts your birth chart from
       the astronomical positions of the planets at the moment you were born,
-      and gives you your Dasha periods, today's Panchang, doshas and remedies.
+      and gives you your Dasha periods, today's Panchang and your remedies.
       When a chart isn't enough, you can put a question directly to astrologer
       Jay Kotecha or book a consultation.
     </p>
@@ -189,21 +161,9 @@
 
       <h3>When will Jay answer my question?</h3>
       <p>
-        Within the window of the response priority you chose when you asked —
-        four hours on Standard, one hour on Priority. Replies appear in the
-        same conversation inside Ask Jay, and you'll find every question you've
-        asked under Ask Jay → My Questions.
-      </p>
-
-      <hr>
-
-      <h3>How do I cancel a subscription?</h3>
-      <p>
-        Subscriptions bought through the App Store are managed by Apple, not by
-        us: open the Settings app on your iPhone, tap your name, then
-        Subscriptions. On Android, open the Play Store, tap your profile
-        picture, then Payments &amp; subscriptions. Cancelling stops future
-        renewals; you keep access until the current period ends.
+        Within four hours of asking. Replies appear in the same conversation
+        inside Ask Jay, and you'll find every question you've asked under Ask
+        Jay → My Questions.
       </p>
 
       <hr>
