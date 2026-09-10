@@ -109,7 +109,7 @@ public static class ChartEndpoints
         // frontend can reuse identical parsing/rendering code for both.
         app.MapPost("/chart/compute", (
             ComputeChartRequest request, IAstroEngineService astroEngine, IKpService kpService,
-            IDashaService dashaService, IDoshaService doshaService) =>
+            IDashaService dashaService) =>
         {
             var timeKnown = !request.UnknownTime && request.Tob is not null;
             var localDateTime = request.Dob.ToDateTime(request.Tob ?? new TimeOnly(12, 0));
@@ -169,13 +169,7 @@ public static class ChartEndpoints
                 pratyantar = SerializeDashaPeriods(dashaResult.CurrentPratyantarList, null, asOfUtc),
             };
 
-            var natalDoshas = doshaService.ComputeNatalDoshas(result.D1, result.AscendantSignIndex);
-            var moonSignIndex = moonPosition.SignIndex;
-            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTime.UtcNow, tz));
-            var sadeSati = doshaService.ComputeSadeSati(moonSignIndex, today);
-            var doshaResponse = new { mangal = natalDoshas.Mangal, kaalSarp = natalDoshas.KaalSarp, sadeSati };
-
-            return Results.Ok(new { chart = chartResponse, dasha = dashaResponse, doshas = doshaResponse });
+            return Results.Ok(new { chart = chartResponse, dasha = dashaResponse });
         }).RequireAuthorization();
     }
 

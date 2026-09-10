@@ -44,10 +44,10 @@ public class AstroEngineService(IAyanamsaService ayanamsa, IAscendantCalculator 
         var ayanamsaDeg = ayanamsa.LahiriDegrees(time);
         // Uranus, Neptune and Pluto included. They are not grahas and no
         // classical rule here touches them — every consumer of this list looks
-        // a planet up by name (DoshaService's Mars/Rahu/Ketu, the dasha's
-        // Moon, the transit endpoints' Moon), so carrying three more bodies
-        // changes no classical result. They ride along so the divisional
-        // charts can show them, which is the one place readers ask for them.
+        // a planet up by name (the dasha's Moon, the transit endpoints' Moon),
+        // so carrying three more bodies changes no classical result. They ride
+        // along so the divisional charts can show them, which is the one place
+        // readers ask for them.
         var siderealByPlanet = GrahaPositions
             .ComputeAll(time, ayanamsa.LahiriDegrees(time), includeOuterPlanets: true)
             .Select(g => (g.Name, Longitude: g.SiderealLongitude, g.Retrograde))

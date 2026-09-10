@@ -173,7 +173,6 @@ builder.Services.AddSingleton<ITransitService, TransitService>();
 builder.Services.AddSingleton<ITrafficSignalService, TrafficSignalService>();
 builder.Services.AddSingleton<IPlacidusHouseCalculator, PlacidusHouseCalculator>();
 builder.Services.AddSingleton<IKpService, KpService>();
-builder.Services.AddSingleton<IDoshaService, DoshaService>();
 
 // Scoped, not singleton: it takes the per-request AppDbContext.
 builder.Services.AddScoped<INotificationGenerator, NotificationGenerator>();
@@ -237,7 +236,6 @@ static void MapEverythingOn(IEndpointRouteBuilder routes)
     routes.MapChartEndpoints();
     routes.MapRemedyEndpoints();
     routes.MapAstrologerEndpoints();
-    routes.MapDoshaEndpoints();
     routes.MapAdminAuthEndpoints();
     routes.MapAdminDashboardEndpoints();
     routes.MapAdminUserEndpoints();
